@@ -37,3 +37,6 @@ class TokenResponse(BaseModel):
 
 class TokenData(BaseModel):
     user_id: Optional[int] = None
+
+class GoogleLoginRequest(BaseModel):
+    credential: str
