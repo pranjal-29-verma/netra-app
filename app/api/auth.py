@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.schemas.user import UserRegister, UserLogin, TokenResponse, UserResponse
+from app.schemas.user import UserRegister, UserLogin, TokenResponse, UserResponse, GoogleLoginRequest
 from app.services.auth_service import AuthService
 from app.core.security import create_access_token, create_refresh_token
 
@@ -36,6 +36,25 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
         access_token=access_token,
         refresh_token=refresh_token,
         user=UserResponse.from_orm(user)
+    )
+
+@router.post("/google", response_model=TokenResponse)
+def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
+    """
+    Authenticate with a Google ID token.
+
+    The frontend sends the credential returned by Google OAuth; the backend
+    verifies it, finds or creates the user, and returns app JWT tokens.
+    """
+    user = AuthService.google_login_user(db, body.credential)
+
+    access_token = create_access_token(data={"sub": str(user.id)})
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse.from_orm(user),
     )
 
 @router.get("/me", response_model=UserResponse)

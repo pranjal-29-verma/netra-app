@@ -1,8 +1,11 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 from app.models.user import User, UserToken
 from app.schemas.user import UserRegister, UserLogin
 from app.core.security import get_password_hash, verify_password
+from app.core.config import settings
 from datetime import datetime
 
 class AuthService:
@@ -80,6 +83,64 @@ class AuthService:
         
         return user
     
+    @staticmethod
+    def google_login_user(db: Session, credential: str) -> User:
+        """Verify Google ID token and find or create the user."""
+        try:
+            id_info = id_token.verify_oauth2_token(
+                credential,
+                google_requests.Request(),
+                settings.GOOGLE_CLIENT_ID,
+            )
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Google credential",
+            )
+
+        google_id = id_info["sub"]
+        email = id_info["email"]
+        display_name = id_info.get("name", "")
+        username_base = email.split("@")[0].replace(".", "_").replace("-", "_")
+
+        # Find by google_id first, then fall back to email
+        user = db.query(User).filter(User.google_id == google_id).first()
+        if not user:
+            user = db.query(User).filter(User.email == email).first()
+
+        if user:
+            # Link google_id if this email exists without it
+            if not user.google_id:
+                user.google_id = google_id
+            user.last_login = datetime.utcnow()
+            db.commit()
+            db.refresh(user)
+            return user
+
+        # New Google user — generate a unique username
+        username = username_base
+        counter = 1
+        while db.query(User).filter(User.username == username).first():
+            username = f"{username_base}{counter}"
+            counter += 1
+
+        new_user = User(
+            username=username,
+            email=email,
+            google_id=google_id,
+            display_name=display_name,
+            last_login=datetime.utcnow(),
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+
+        user_token = UserToken(user_id=new_user.id)
+        db.add(user_token)
+        db.commit()
+
+        return new_user
+
     @staticmethod
     def get_user_by_id(db: Session, user_id: int) -> User:
         """Get user by ID."""
