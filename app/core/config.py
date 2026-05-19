@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     # Google OAuth
     GOOGLE_CLIENT_ID: str
 
+    # Supabase Storage
+    SUPABASE_URL: str
+    SUPABASE_SERVICE_KEY: str
+    SUPABASE_STORAGE_BUCKET: str = "documents"
+
     # CORS
     FRONTEND_URL: str
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:5174"]

@@ -5,6 +5,7 @@ from app.core.database import engine, Base
 from app.api import auth
 from app.api import conversations
 from app.api import tokens
+from app.api import documents
 import app.models  # ensure all models are registered for table creation
 
 # Create database tables
@@ -30,6 +31,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(conversations.router, prefix="/api")
 app.include_router(tokens.router, prefix="/api")
+app.include_router(documents.router, prefix="/api")
 
 @app.get("/")
 def root():
