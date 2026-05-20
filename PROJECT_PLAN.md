@@ -497,6 +497,21 @@ ENVIRONMENT=development
 **Solution:** Use `toast()`, `toast.success()`, or `toast.error()`  
 **Files Affected:** `src/components/auth/LoginForm.tsx`
 
+### Issue 4: Duplicate Embeddings Across Scopes (Known Limitation)
+**Problem:** A user can upload the same file under different scopes (global + conversation). This creates separate `document` records and separate `document_chunks` rows — the same text gets embedded twice, wasting Voyage AI API quota and DB storage.
+
+**Current workaround:** `VectorService.similarity_search()` deduplicates results by content at query time, so Claude never receives the same chunk twice in its context window.
+
+**Future fix — Content Hashing at Upload Time:**
+- Add a `content_hash` column (MD5/SHA256) to the `documents` table
+- Before running the embedding pipeline, check if another document with the same hash already exists for this user
+- If a match is found, reuse its existing chunk rows instead of re-embedding
+- This eliminates duplicate rows in `document_chunks` entirely
+
+**When to implement:** When the document library grows large enough that duplicate storage or Voyage AI quota usage becomes a concern. Not worth the complexity for single-user personal use.
+
+**Files Affected:** `app/services/vector_service.py`, `app/services/document_service.py`, `app/models/document.py`
+
 ---
 
 ## 📝 Development Guidelines
