@@ -37,7 +37,7 @@
 
 ### **Phase 2: Core Development** 🔄 IN PROGRESS
 **Duration:** 3-4 weeks (estimated)  
-**Status:** In Progress (Iteration 5/16 completed)
+**Status:** In Progress (Iteration 13/16 completed)
 
 #### Iteration Breakdown:
 
@@ -222,9 +222,9 @@ rehype-highlight
 
 ---
 
-##### **Iteration 6: Chat Backend (Basic)** 🔜 NEXT
-**Status:** Not Started  
-**Planned Backend Files:**
+##### **Iteration 6-7: Chat Backend & Integration** ✅ COMPLETED
+**Status:** Completed  
+**Backend Files Created:**
 app/
 ├── models/
 │   ├── conversation.py            # Conversation model
@@ -235,121 +235,108 @@ app/
 ├── services/
 │   └── chat_service.py            # Chat business logic
 └── api/
-└── chat.py                    # Chat endpoints
+    └── conversations.py           # Chat endpoints
 
-**Planned Database Tables:**
-- `conversations` - Chat conversations
-- `messages` - Chat messages
+**Database Tables:**
+- `conversations` - id, user_id, title, is_incognito, created_at, updated_at
+- `messages` - id, conversation_id, role, content, tokens_used, sources, created_at
 
-**Planned API Endpoints:**
+**API Endpoints:**
 - `POST /api/conversations` - Create new conversation
 - `GET /api/conversations` - List user conversations
-- `GET /api/conversations/{id}` - Get conversation with messages
-- `POST /api/conversations/{id}/messages` - Send message
+- `GET /api/conversations/{id}/messages` - Get messages for a conversation
+- `POST /api/conversations/{id}/messages` - Send message (stores user message, returns echo)
 - `DELETE /api/conversations/{id}` - Delete conversation
 
-**Planned Deliverables:**
-- Conversation CRUD operations
-- Message storage
-- Chat history retrieval
-- Conversation title generation
+---
+
+##### **Iteration 8-9: Token Management** ✅ COMPLETED
+**Status:** Completed  
+**Backend Files Created:**
+app/
+├── models/
+│   └── user_token.py              # UserToken model
+├── services/
+│   └── token_service.py           # Token counting & quota
+└── api/
+    └── tokens.py                  # Token usage endpoint
+
+**API Endpoints:**
+- `GET /api/tokens/usage` - Returns tokens_used, daily_quota, remaining, usage_percentage
+
+**Notes:**
+- Token counts are null until LLM integration (Iteration 15)
+- Frontend shows "--" for null token counts
 
 ---
 
-##### **Iteration 7: Connect Chat UI to Backend** 🔜 UPCOMING
-**Status:** Not Started  
-**Planned Features:**
-- Real-time message persistence
-- Load chat history from database
-- Create new conversations
-- Delete conversations
-- Update conversation titles
+##### **Iteration 10-11: Incognito Mode** ✅ COMPLETED
+**Status:** Completed — **Frontend-only implementation**  
+**Key Decision:** Incognito is handled entirely on the frontend (negative-ID local conversations). No backend involvement; messages for negative-ID conversations are never sent to the API. Redis integration deferred to a future enhancement.
 
 ---
 
-##### **Iteration 8: Token Management UI** 🔜 UPCOMING
-**Status:** Not Started  
-**Planned Features:**
-- Token usage display
-- Daily quota indicator
-- Warning when quota low
-- Token usage per message
+##### **Iteration 12-13: Document Upload** ✅ COMPLETED
+**Status:** Completed  
+**Backend Files Created:**
+app/
+├── core/
+│   └── storage.py                 # Supabase Storage singleton client
+├── models/
+│   └── document.py                # Document model
+├── schemas/
+│   └── document.py                # DocumentResponse, DocumentURLCreate
+├── services/
+│   └── document_service.py        # Upload, list, delete logic
+└── api/
+    └── documents.py               # Document endpoints
+
+**Database Table:**
+```sql
+documents (
+  id, user_id, filename, file_type, file_size,
+  storage_path, source_url, status,
+  scope,           -- 'global' | 'conversation'
+  conversation_id, -- FK → conversations(id), null for global
+  created_at
+)
+```
+
+**API Endpoints:**
+- `GET /api/documents?conversation_id=` - List docs (global + conversation-scoped)
+- `POST /api/documents/upload` - Upload file (multipart; scope + conversation_id as Form fields)
+- `POST /api/documents/url` - Add URL (scope + conversation_id in JSON body)
+- `DELETE /api/documents/{id}` - Delete doc + remove from Supabase Storage
+
+**Storage:** Supabase Storage (private bucket `documents`). Path pattern: `{user_id}/{uuid}.{ext}`
+
+**Allowed types:** PDF, TXT, DOCX, MD · Max 20 MB
 
 ---
 
-##### **Iteration 9: Token Management Backend** 🔜 UPCOMING
-**Status:** Not Started  
-**Planned Features:**
-- Token counting per message
-- Daily quota enforcement
-- Hourly rate limiting
-- Token reset at midnight UTC
-- Usage tracking
-
----
-
-##### **Iteration 10: Incognito Mode UI** 🔜 UPCOMING
-**Status:** Not Started  
-**Planned Features:**
-- Incognito toggle switch
-- Visual indicators
-- Session-based storage
-- No history persistence
-
----
-
-##### **Iteration 11: Incognito Mode Backend** 🔜 UPCOMING
-**Status:** Not Started  
-**Planned Features:**
-- Redis integration
-- Temporary message storage
-- Session cleanup
-- 24-hour TTL
-
----
-
-##### **Iteration 12: Document Upload UI** 🔜 UPCOMING
-**Status:** Not Started  
-**Planned Features:**
-- File upload component
-- URL input for links
-- Document list display
-- Project/tag organization
-
----
-
-##### **Iteration 13: Document Processing Backend** 🔜 UPCOMING
-**Status:** Not Started  
-**Planned Features:**
-- File upload endpoint
-- PDF/DOCX/TXT parsing
-- Web scraping for URLs
-- Text chunking strategy
-
----
-
-##### **Iteration 14: Vector Database Integration** 🔜 UPCOMING
+##### **Iteration 14: Vector Database Integration** 🔜 NEXT
 **Status:** Not Started  
 **Planned Features:**
 - ChromaDB setup
-- Document embedding generation
+- Document embedding generation (Sentence Transformers)
 - Vector storage
 - Similarity search
 
 ---
 
-##### **Iteration 15: LLM Integration (RAG)** 🔜 UPCOMING
+##### **Iteration 15: LLM Integration (RAG)** ⏳ UPCOMING
 **Status:** Not Started  
 **Planned Features:**
 - Claude API integration
 - Retrieval-Augmented Generation (RAG)
-- Context injection from documents
-- Streaming responses
-- Source citations
+- Context injection from documents (scoped to conversation)
+- Streaming responses (WebSocket or SSE)
+- Source citations in message response
+- Real token counting
 
 ---
 
-##### **Iteration 16: Polish & Bug Fixes** 🔜 UPCOMING
+##### **Iteration 16: Polish & Bug Fixes** ⏳ UPCOMING
 **Status:** Not Started  
 **Planned Features:**
 - Error handling improvements
@@ -455,11 +442,11 @@ messages (
   tokens_used, sources, created_at
 )
 
--- Documents (To be added in Iteration 13)
-user_documents (
+-- Documents (Added in Iteration 12-13)
+documents (
   id, user_id, filename, file_type, file_size,
-  file_path, is_url, url, project_tag, 
-  indexed_at, created_at
+  storage_path, source_url, status,
+  scope, conversation_id, created_at
 )
 ```
 
@@ -510,6 +497,21 @@ ENVIRONMENT=development
 **Solution:** Use `toast()`, `toast.success()`, or `toast.error()`  
 **Files Affected:** `src/components/auth/LoginForm.tsx`
 
+### Issue 4: Duplicate Embeddings Across Scopes (Known Limitation)
+**Problem:** A user can upload the same file under different scopes (global + conversation). This creates separate `document` records and separate `document_chunks` rows — the same text gets embedded twice, wasting Voyage AI API quota and DB storage.
+
+**Current workaround:** `VectorService.similarity_search()` deduplicates results by content at query time, so Claude never receives the same chunk twice in its context window.
+
+**Future fix — Content Hashing at Upload Time:**
+- Add a `content_hash` column (MD5/SHA256) to the `documents` table
+- Before running the embedding pipeline, check if another document with the same hash already exists for this user
+- If a match is found, reuse its existing chunk rows instead of re-embedding
+- This eliminates duplicate rows in `document_chunks` entirely
+
+**When to implement:** When the document library grows large enough that duplicate storage or Voyage AI quota usage becomes a concern. Not worth the complexity for single-user personal use.
+
+**Files Affected:** `app/services/vector_service.py`, `app/services/document_service.py`, `app/models/document.py`
+
 ---
 
 ## 📝 Development Guidelines
@@ -531,17 +533,17 @@ ENVIRONMENT=development
 
 ## 📊 Progress Tracking
 
-**Overall Progress:** 31% (5/16 iterations completed)
+**Overall Progress:** 81% (13/16 iterations completed)
 
 | Phase | Progress | Status |
 |-------|----------|--------|
 | Phase 1: Planning | 100% | ✅ Done |
-| Phase 2: Development | 31% | 🔄 In Progress |
+| Phase 2: Development | 81% | 🔄 In Progress |
 | Phase 3: Deployment | 0% | ⏳ Pending |
 | Phase 4: Bug Fixes | 0% | ⏳ Pending |
 | Phase 5: Enhancements | 0% | ⏳ Pending |
 
-**Next Milestone:** Complete Iteration 6 (Chat Backend)
+**Next Milestone:** Complete Iteration 14 (Vector DB Integration)
 
 ---
 
@@ -578,5 +580,5 @@ psql -d netra_chatbot -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 
 ---
 
-**Last Updated:** Iteration 5 Completed  
-**Next Update:** After Iteration 6
+**Last Updated:** Iteration 13 Completed  
+**Next Update:** After Iteration 14 (Vector DB Integration)
