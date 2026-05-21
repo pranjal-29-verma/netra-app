@@ -8,11 +8,13 @@ from app.schemas.conversation import ConversationCreate
 class ConversationService:
 
     @staticmethod
-    def list_conversations(db: Session, user_id: int) -> list[Conversation]:
+    def list_conversations(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> list[Conversation]:
         return (
             db.query(Conversation)
             .filter(Conversation.user_id == user_id)
             .order_by(Conversation.updated_at.desc())
+            .limit(limit)
+            .offset(offset)
             .all()
         )
 
