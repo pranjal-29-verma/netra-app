@@ -62,7 +62,7 @@ class ChatService:
         # Stream LLM response, accumulate full text
         full_response = ""
         sources = [
-            {"document_id": c["document_id"], "filename": c["filename"], "file_type": c["file_type"]}
+            {"document_id": c["document_id"], "filename": c["filename"], "file_type": c["file_type"], "source_url": c.get("source_url")}
             for c in chunks
         ]
 
@@ -123,7 +123,7 @@ class ChatService:
             conversation_id=None, top_k=5,
         )
         sources = [
-            {"document_id": c["document_id"], "filename": c["filename"], "file_type": c["file_type"]}
+            {"document_id": c["document_id"], "filename": c["filename"], "file_type": c["file_type"], "source_url": c.get("source_url")}
             for c in chunks
         ]
 

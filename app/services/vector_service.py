@@ -44,7 +44,7 @@ class VectorService:
         """ if conversation_id else "AND d.scope = 'global'"
 
         sql = text(f"""
-            SELECT dc.content, dc.document_id, d.filename, d.file_type,
+            SELECT dc.content, dc.document_id, d.filename, d.file_type, d.source_url,
                    1 - (dc.embedding <=> CAST(:embedding AS vector)) AS similarity
             FROM document_chunks dc
             JOIN documents d ON dc.document_id = d.id
@@ -88,6 +88,7 @@ class VectorService:
                     "document_id": r.document_id,
                     "filename": r.filename,
                     "file_type": r.file_type,
+                    "source_url": r.source_url,
                     "similarity": float(r.similarity),
                 })
         return results
