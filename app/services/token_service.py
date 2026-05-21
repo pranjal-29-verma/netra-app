@@ -35,7 +35,8 @@ class TokenService:
 
     @staticmethod
     def add_tokens(db: Session, user_id: int, tokens: int) -> None:
-        record = TokenService.get_or_create(db, user_id)
+        # Use get_usage so the daily reset fires if the day has flipped
+        record = TokenService.get_usage(db, user_id)
         record.tokens_used += tokens
         record.total_tokens_used += tokens
         db.commit()

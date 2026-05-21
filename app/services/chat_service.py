@@ -35,6 +35,12 @@ class ChatService:
         user_id: int,
         content: str,
     ) -> AsyncIterator[str]:
+        # Hard quota check — blocks API-level abuse even if the UI is bypassed
+        quota = TokenService.get_usage(db, user_id)
+        if quota.tokens_used >= quota.daily_quota:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Daily token quota exhausted. Please try again tomorrow.'})}\n\n"
+            return
+
         # Verify ownership
         conversation = ConversationService.get_conversation(db, conversation_id, user_id)
 
@@ -117,6 +123,12 @@ class ChatService:
         content: str,
         history: list[dict],
     ) -> AsyncIterator[str]:
+        # Hard quota check
+        quota = TokenService.get_usage(db, user_id)
+        if quota.tokens_used >= quota.daily_quota:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Daily token quota exhausted. Please try again tomorrow.'})}\n\n"
+            return
+
         # RAG: global docs only — incognito has no conversation scope
         chunks = VectorService.similarity_search(
             db, query=content, user_id=user_id,
