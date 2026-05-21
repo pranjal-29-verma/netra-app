@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     # Voyage AI (embeddings)
     VOYAGE_API_KEY: str
 
+    # LLM — set whichever key matches your chosen provider; LiteLLM reads them automatically
+    ANTHROPIC_API_KEY: str | None = None   # claude-*  models
+    GEMINI_API_KEY: str | None = None      # gemini/*  models
+    OPENAI_API_KEY: str | None = None      # gpt-*     models
+    MISTRAL_API_KEY: str | None = None     # mistral-* models
+    LLM_MODEL: str = "gemini/gemini-2.0-flash"
+
     # CORS
     FRONTEND_URL: str
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:5174"]

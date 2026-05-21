@@ -32,3 +32,7 @@ pgvector==0.4.2
 
 # Embeddings
 voyageai==0.2.4
+
+# LLM
+litellm==1.83.7
+anthropic==0.103.1

@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
 from app.schemas.conversation import ConversationCreate, ConversationResponse
-from app.schemas.message import MessageResponse, MessageCreate, SendMessageResponse
+from app.schemas.message import MessageResponse, MessageCreate
 from app.services.conversation_service import ConversationService
 from app.services.chat_service import ChatService
 
@@ -46,12 +47,18 @@ def get_messages(
     return ConversationService.get_messages(db, conversation_id, current_user.id)
 
 
-@router.post("/{conversation_id}/messages", response_model=SendMessageResponse, status_code=status.HTTP_201_CREATED)
-def send_message(
+@router.post("/{conversation_id}/messages/stream")
+async def stream_message(
     conversation_id: int,
     body: MessageCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    user_msg, assistant_msg = ChatService.send_message(db, conversation_id, current_user.id, body.content)
-    return SendMessageResponse(user_message=user_msg, assistant_message=assistant_msg)
+    return StreamingResponse(
+        ChatService.stream_message(db, conversation_id, current_user.id, body.content),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

@@ -32,3 +32,10 @@ class TokenService:
             db.refresh(record)
 
         return record
+
+    @staticmethod
+    def add_tokens(db: Session, user_id: int, tokens: int) -> None:
+        record = TokenService.get_or_create(db, user_id)
+        record.tokens_used += tokens
+        record.total_tokens_used += tokens
+        db.commit()
