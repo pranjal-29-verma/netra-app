@@ -9,8 +9,11 @@ class Settings(BaseSettings):
     # JWT
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60   # override in .env (e.g. 480 for 8h)
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7      # override in .env
+
+    # Token quota — default for new users; Admin UI override coming in Phase 5
+    DEFAULT_DAILY_TOKEN_QUOTA: int = 100000
     
     # Google OAuth
     GOOGLE_CLIENT_ID: str

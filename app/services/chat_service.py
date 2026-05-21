@@ -35,6 +35,12 @@ class ChatService:
         user_id: int,
         content: str,
     ) -> AsyncIterator[str]:
+        # Hard quota check — blocks API-level abuse even if the UI is bypassed
+        quota = TokenService.get_usage(db, user_id)
+        if quota.tokens_used >= quota.daily_quota:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Daily token quota exhausted. Please try again tomorrow.'})}\n\n"
+            return
+
         # Verify ownership
         conversation = ConversationService.get_conversation(db, conversation_id, user_id)
 
@@ -62,7 +68,7 @@ class ChatService:
         # Stream LLM response, accumulate full text
         full_response = ""
         sources = [
-            {"document_id": c["document_id"], "filename": c["filename"], "file_type": c["file_type"]}
+            {"document_id": c["document_id"], "filename": c["filename"], "file_type": c["file_type"], "source_url": c.get("source_url")}
             for c in chunks
         ]
 
@@ -117,13 +123,19 @@ class ChatService:
         content: str,
         history: list[dict],
     ) -> AsyncIterator[str]:
+        # Hard quota check
+        quota = TokenService.get_usage(db, user_id)
+        if quota.tokens_used >= quota.daily_quota:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Daily token quota exhausted. Please try again tomorrow.'})}\n\n"
+            return
+
         # RAG: global docs only — incognito has no conversation scope
         chunks = VectorService.similarity_search(
             db, query=content, user_id=user_id,
             conversation_id=None, top_k=5,
         )
         sources = [
-            {"document_id": c["document_id"], "filename": c["filename"], "file_type": c["file_type"]}
+            {"document_id": c["document_id"], "filename": c["filename"], "file_type": c["file_type"], "source_url": c.get("source_url")}
             for c in chunks
         ]
 

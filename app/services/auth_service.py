@@ -42,10 +42,10 @@ class AuthService:
         db.refresh(new_user)
         
         # Create token quota for user
-        user_token = UserToken(user_id=new_user.id)
+        user_token = UserToken(user_id=new_user.id, daily_quota=settings.DEFAULT_DAILY_TOKEN_QUOTA)
         db.add(user_token)
         db.commit()
-        
+
         return new_user
     
     @staticmethod
@@ -135,7 +135,7 @@ class AuthService:
         db.commit()
         db.refresh(new_user)
 
-        user_token = UserToken(user_id=new_user.id)
+        user_token = UserToken(user_id=new_user.id, daily_quota=settings.DEFAULT_DAILY_TOKEN_QUOTA)
         db.add(user_token)
         db.commit()
 
