@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
@@ -14,10 +14,12 @@ router = APIRouter(prefix="/conversations", tags=["Conversations"])
 
 @router.get("", response_model=list[ConversationResponse])
 def list_conversations(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return ConversationService.list_conversations(db, current_user.id)
+    return ConversationService.list_conversations(db, current_user.id, limit=limit, offset=offset)
 
 
 @router.post("", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
