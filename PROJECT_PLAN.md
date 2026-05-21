@@ -314,25 +314,46 @@ documents (
 
 ---
 
-##### **Iteration 14: Vector Database Integration** 🔜 NEXT
-**Status:** Not Started  
-**Planned Features:**
-- ChromaDB setup
-- Document embedding generation (Sentence Transformers)
-- Vector storage
-- Similarity search
+##### **Iteration 14: Vector Database Integration** ✅ COMPLETED
+**Status:** Completed  
+**Files Created:**
+- `app/models/document_chunk.py` — DocumentChunk model with pgvector 1024-dim embedding
+- `app/services/text_extractor.py` — PDF, DOCX, TXT, MD, URL text extraction
+- `app/services/chunking_service.py` — 1000-char chunks with 100-char overlap
+- `app/services/embedding_service.py` — Voyage AI voyage-3 embeddings
+- `app/services/vector_service.py` — store_chunks, similarity_search (scope-aware + dedup), delete_chunks
+
+**Key Decisions:**
+- pgvector over ChromaDB — already using Supabase, no new infra needed
+- Voyage AI over OpenAI — Anthropic-recommended, 200M free tokens/month
+- Search-time deduplication to prevent duplicate RAG context when same file uploaded in multiple scopes
 
 ---
 
-##### **Iteration 15: LLM Integration (RAG)** ⏳ UPCOMING
-**Status:** Not Started  
-**Planned Features:**
-- Claude API integration
-- Retrieval-Augmented Generation (RAG)
-- Context injection from documents (scoped to conversation)
-- Streaming responses (WebSocket or SSE)
-- Source citations in message response
-- Real token counting
+##### **Iteration 15: LLM Integration (RAG + Streaming)** 🔄 IN PROGRESS
+**Status:** In Progress  
+**Files Created/Modified:**
+- `app/services/llm_service.py` — LiteLLM async streaming, provider-agnostic
+- `app/services/chat_service.py` — RAG orchestration: vector search → prompt build → stream → save
+- `app/api/conversations.py` — SSE streaming endpoint `POST /{id}/messages/stream`
+- `app/services/token_service.py` — Added `add_tokens()` method
+
+**Key Decisions:**
+- **LiteLLM** over direct Anthropic SDK — supports 100+ providers (Claude, Gemini, OpenAI, Mistral) via same API. Switch providers by changing `LLM_MODEL` in `.env`, zero code changes.
+- **SSE over WebSocket** — one-way streaming from server is simpler and sufficient for chat
+- **Provider API keys** all optional in config — only set the key for your active provider
+- **Currently using** `gemini/gemini-2.0-flash` (Gemini key available); switch to `claude-sonnet-4-6` when Anthropic key is ready
+
+**LLM Config (change in .env only):**
+```env
+# For Gemini (current)
+GEMINI_API_KEY=...
+LLM_MODEL=gemini/gemini-2.0-flash
+
+# For Claude (swap these two lines)
+ANTHROPIC_API_KEY=sk-ant-...
+LLM_MODEL=claude-sonnet-4-6
+```
 
 ---
 
@@ -343,6 +364,25 @@ documents (
 - Loading states
 - UI/UX polish
 - Performance optimization
+
+---
+
+##### **Future: Admin Panel & Multi-tenancy** ⏳ PHASE 5
+**Why a separate phase (not an iteration):**
+Admin panel is a 6-8 component feature that must be done right, especially around security:
+
+- User role system (admin vs regular user)
+- Protected admin routes (backend + frontend)  
+- Admin dashboard UI (separate page/layout)
+- **Encrypted API key storage in DB** (never store plain text — use Fernet/AES)
+- LLM config table — provider + model + API key managed from UI
+- All user requests read config from DB instead of `.env`
+- Per-user token quotas controlled by admin
+- Key rotation without downtime
+
+**When to build:** After the core product is working end-to-end and you have real clients who need different models. Do not rush this — encrypted key storage done wrong is a security vulnerability.
+
+**Impact on current architecture:** `llm_service.py` reads `settings.LLM_MODEL` today. When Admin Panel is built, replace that with a DB lookup. The LiteLLM call stays identical — only the model string source changes.
 
 ---
 
@@ -543,7 +583,7 @@ ENVIRONMENT=development
 | Phase 4: Bug Fixes | 0% | ⏳ Pending |
 | Phase 5: Enhancements | 0% | ⏳ Pending |
 
-**Next Milestone:** Complete Iteration 14 (Vector DB Integration)
+**Next Milestone:** Complete Iteration 15 (LLM Integration)
 
 ---
 
@@ -580,5 +620,5 @@ psql -d netra_chatbot -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 
 ---
 
-**Last Updated:** Iteration 13 Completed  
-**Next Update:** After Iteration 14 (Vector DB Integration)
+**Last Updated:** Iteration 15 In Progress  
+**Next Update:** After Iteration 15 (LLM Integration)
