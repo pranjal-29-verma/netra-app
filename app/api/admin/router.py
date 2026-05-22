@@ -276,3 +276,120 @@ def assign_roles(
     db.commit()
     db.refresh(user)
     return {"id": user.id, "roles": [r.name for r in user.roles]}
+
+
+# ── Content Oversight ──────────────────────────────────────────────────────────
+
+@router.get("/conversations", summary="All conversations (metadata only)")
+def list_conversations(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    search: str = Query("", description="Search by title or username"),
+    current_user: User = Depends(require_permission("conversations:read_meta")),
+    db: Session = Depends(get_db),
+):
+    q = (
+        db.query(Conversation, User.username)
+        .join(User, Conversation.user_id == User.id)
+    )
+    if search:
+        term = f"%{search}%"
+        q = q.filter(
+            or_(Conversation.title.ilike(term), User.username.ilike(term))
+        )
+
+    total = q.count()
+    rows = q.order_by(Conversation.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+
+    result = []
+    for conv, username in rows:
+        msg_count = db.query(func.count(Message.id)).filter(Message.conversation_id == conv.id).scalar()
+        result.append({
+            "id": conv.id,
+            "title": conv.title,
+            "username": username,
+            "user_id": conv.user_id,
+            "is_incognito": conv.is_incognito,
+            "message_count": msg_count,
+            "created_at": conv.created_at.isoformat(),
+            "updated_at": conv.updated_at.isoformat(),
+        })
+
+    return {
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": max(1, -(-total // limit)),
+        "conversations": result,
+    }
+
+
+@router.delete("/conversations/{conv_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a conversation")
+def delete_conversation(
+    conv_id: int,
+    current_user: User = Depends(require_permission("conversations:delete")),
+    db: Session = Depends(get_db),
+):
+    conv = db.query(Conversation).filter(Conversation.id == conv_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    db.query(Message).filter(Message.conversation_id == conv_id).delete(synchronize_session=False)
+    db.delete(conv)
+    db.commit()
+
+
+@router.get("/documents", summary="All documents")
+def list_documents(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    search: str = Query("", description="Search by filename or username"),
+    current_user: User = Depends(require_permission("documents:read")),
+    db: Session = Depends(get_db),
+):
+    q = (
+        db.query(Document, User.username)
+        .join(User, Document.user_id == User.id)
+    )
+    if search:
+        term = f"%{search}%"
+        q = q.filter(
+            or_(Document.filename.ilike(term), User.username.ilike(term))
+        )
+
+    total = q.count()
+    rows = q.order_by(Document.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+
+    return {
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": max(1, -(-total // limit)),
+        "documents": [
+            {
+                "id": doc.id,
+                "filename": doc.filename,
+                "file_type": doc.file_type,
+                "file_size": doc.file_size,
+                "status": doc.status,
+                "scope": doc.scope,
+                "source_url": doc.source_url,
+                "username": username,
+                "user_id": doc.user_id,
+                "created_at": doc.created_at.isoformat(),
+            }
+            for doc, username in rows
+        ],
+    }
+
+
+@router.delete("/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a document")
+def delete_document(
+    doc_id: int,
+    current_user: User = Depends(require_permission("documents:delete")),
+    db: Session = Depends(get_db),
+):
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    db.delete(doc)
+    db.commit()
