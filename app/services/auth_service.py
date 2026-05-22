@@ -34,7 +34,8 @@ class AuthService:
             username=user_data.username,
             email=user_data.email,
             password_hash=hashed_password,
-            display_name=user_data.username
+            display_name=user_data.username,
+            gender=user_data.gender,
         )
         
         db.add(new_user)
