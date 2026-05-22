@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from app.core.security import require_permission
@@ -9,6 +11,7 @@ from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
+from app.models.rbac import Role, Permission
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -192,3 +195,84 @@ def _user_detail(user: User, db: Session) -> dict:
     )
     base.update({"documents": doc_count, "messages": msg_count})
     return base
+
+
+# ── Role Management ────────────────────────────────────────────────────────────
+
+class CreateRoleBody(BaseModel):
+    name: str
+    description: str = ""
+    permission_ids: List[int] = []
+
+class AssignRolesBody(BaseModel):
+    role_ids: List[int]
+
+
+@router.get("/roles", summary="List all roles with permissions")
+def list_roles(
+    current_user: User = Depends(require_permission("roles:assign")),
+    db: Session = Depends(get_db),
+):
+    roles = db.query(Role).order_by(Role.id).all()
+    return [
+        {
+            "id": r.id,
+            "name": r.name,
+            "description": r.description,
+            "permissions": [{"id": p.id, "name": p.name, "description": p.description} for p in r.permissions],
+        }
+        for r in roles
+    ]
+
+
+@router.get("/permissions", summary="List all permissions")
+def list_permissions(
+    current_user: User = Depends(require_permission("roles:manage")),
+    db: Session = Depends(get_db),
+):
+    perms = db.query(Permission).order_by(Permission.name).all()
+    return [{"id": p.id, "name": p.name, "description": p.description} for p in perms]
+
+
+@router.post("/roles", status_code=status.HTTP_201_CREATED, summary="Create a new role")
+def create_role(
+    body: CreateRoleBody,
+    current_user: User = Depends(require_permission("roles:manage")),
+    db: Session = Depends(get_db),
+):
+    if db.query(Role).filter(Role.name == body.name).first():
+        raise HTTPException(status_code=400, detail="Role name already exists")
+
+    role = Role(name=body.name.lower().strip(), description=body.description)
+    if body.permission_ids:
+        perms = db.query(Permission).filter(Permission.id.in_(body.permission_ids)).all()
+        role.permissions = perms
+    db.add(role)
+    db.commit()
+    db.refresh(role)
+    return {
+        "id": role.id,
+        "name": role.name,
+        "description": role.description,
+        "permissions": [{"id": p.id, "name": p.name, "description": p.description} for p in role.permissions],
+    }
+
+
+@router.put("/users/{user_id}/roles", summary="Assign roles to a user")
+def assign_roles(
+    user_id: int,
+    body: AssignRolesBody,
+    current_user: User = Depends(require_permission("roles:assign")),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot modify your own roles")
+
+    roles = db.query(Role).filter(Role.id.in_(body.role_ids)).all()
+    user.roles = roles
+    db.commit()
+    db.refresh(user)
+    return {"id": user.id, "roles": [r.name for r in user.roles]}
