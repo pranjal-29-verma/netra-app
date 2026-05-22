@@ -4,7 +4,7 @@ from jose import JWTError, jwt
 import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.core.config import settings
 from app.core.database import get_db
 
@@ -100,7 +100,14 @@ def get_current_user(
     if user_id is None:
         raise credentials_exception
 
-    user = db.query(User).filter(User.id == int(user_id)).first()
+    from app.models.rbac import Role, Permission  # local import to avoid circular dependency
+
+    user = (
+        db.query(User)
+        .options(joinedload(User.roles).joinedload(Role.permissions))
+        .filter(User.id == int(user_id))
+        .first()
+    )
     if user is None or not user.is_active:
         raise credentials_exception
 
