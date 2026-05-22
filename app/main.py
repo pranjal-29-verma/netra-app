@@ -7,6 +7,7 @@ from app.api import conversations
 from app.api import tokens
 from app.api import documents
 from app.api import chat
+from app.api import users
 import app.models  # ensure all models are registered for table creation
 
 # Create database tables
@@ -34,6 +35,7 @@ app.include_router(conversations.router, prefix="/api")
 app.include_router(tokens.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
 
 @app.get("/")
 def root():
