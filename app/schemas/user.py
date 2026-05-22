@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 # Request Schemas
@@ -41,6 +41,31 @@ class PasswordChange(BaseModel):
     new_password: str = Field(..., min_length=6)
 
 # Response Schemas
+class RoleResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+class PermissionResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+class RoleDetailResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    permissions: List[PermissionResponse] = []
+
+    class Config:
+        from_attributes = True
+
 class UserResponse(BaseModel):
     id: int
     username: str
@@ -51,6 +76,7 @@ class UserResponse(BaseModel):
     save_conversations: bool
     is_active: bool
     created_at: datetime
+    roles: List[RoleResponse] = []
 
     class Config:
         from_attributes = True
