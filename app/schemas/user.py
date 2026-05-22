@@ -76,7 +76,7 @@ class UserResponse(BaseModel):
     save_conversations: bool
     is_active: bool
     created_at: datetime
-    roles: List[RoleResponse] = []
+    roles: List[RoleDetailResponse] = []
 
     class Config:
         from_attributes = True
