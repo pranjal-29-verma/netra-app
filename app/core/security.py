@@ -10,6 +10,29 @@ from app.core.database import get_db
 
 bearer_scheme = HTTPBearer()
 
+
+def require_permission(permission: str):
+    """
+    FastAPI dependency factory — raises 403 if the current user lacks `permission`.
+
+    Usage:
+        @router.get("/admin/users", dependencies=[Depends(require_permission("users:read"))])
+    """
+    def _check(current_user=Depends(lambda credentials=Depends(bearer_scheme), db=Depends(get_db): get_current_user(credentials, db))):
+        from app.models.rbac import Role  # local import to avoid circular dependency
+        user_permissions = {
+            perm.name
+            for role in current_user.roles
+            for perm in role.permissions
+        }
+        if permission not in user_permissions:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied: '{permission}' required",
+            )
+        return current_user
+    return _check
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against a hash."""
     try:
