@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -393,3 +393,55 @@ def delete_document(
         raise HTTPException(status_code=404, detail="Document not found")
     db.delete(doc)
     db.commit()
+
+
+# ── Analytics ──────────────────────────────────────────────────────────────────
+
+@router.get("/analytics/registrations", summary="Daily new user registrations — last 30 days")
+def analytics_registrations(
+    current_user: User = Depends(require_permission("analytics:view")),
+    db: Session = Depends(get_db),
+):
+    since = datetime.now(timezone.utc) - timedelta(days=29)
+    rows = (
+        db.query(func.date(User.created_at).label("date"), func.count(User.id).label("count"))
+        .filter(User.created_at >= since)
+        .group_by(func.date(User.created_at))
+        .order_by(func.date(User.created_at))
+        .all()
+    )
+    return [{"date": str(r.date), "count": r.count} for r in rows]
+
+
+@router.get("/analytics/conversations", summary="Daily new conversations — last 30 days")
+def analytics_conversations_daily(
+    current_user: User = Depends(require_permission("analytics:view")),
+    db: Session = Depends(get_db),
+):
+    since = datetime.now(timezone.utc) - timedelta(days=29)
+    rows = (
+        db.query(func.date(Conversation.created_at).label("date"), func.count(Conversation.id).label("count"))
+        .filter(Conversation.created_at >= since)
+        .group_by(func.date(Conversation.created_at))
+        .order_by(func.date(Conversation.created_at))
+        .all()
+    )
+    return [{"date": str(r.date), "count": r.count} for r in rows]
+
+
+@router.get("/analytics/top-users", summary="Top 10 users by total token consumption")
+def analytics_top_users(
+    current_user: User = Depends(require_permission("analytics:view")),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(User.username, UserToken.total_tokens_used, UserToken.tokens_used)
+        .join(UserToken, User.id == UserToken.user_id)
+        .order_by(UserToken.total_tokens_used.desc())
+        .limit(10)
+        .all()
+    )
+    return [
+        {"username": r.username, "total_tokens": r.total_tokens_used, "today_tokens": r.tokens_used}
+        for r in rows
+    ]
