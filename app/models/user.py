@@ -15,6 +15,7 @@ class User(Base):
     gender = Column(String(10), nullable=True)        # 'male' | 'female' | 'other'
     avatar_seed = Column(String(100), nullable=True)
     save_conversations = Column(Boolean, default=True)
+    theme = Column(String(10), default='system')   # 'light' | 'dark' | 'system'
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
