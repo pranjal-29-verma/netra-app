@@ -29,11 +29,18 @@ class UserUpdate(BaseModel):
     gender: Optional[str] = None
     avatar_seed: Optional[str] = Field(None, max_length=100)
     save_conversations: Optional[bool] = None
+    theme: Optional[str] = None
 
     @validator('gender')
     def gender_valid(cls, v):
         if v is not None and v not in ('male', 'female', 'other'):
             raise ValueError("gender must be 'male', 'female', or 'other'")
+        return v
+
+    @validator('theme')
+    def theme_valid(cls, v):
+        if v is not None and v not in ('light', 'dark', 'system'):
+            raise ValueError("theme must be 'light', 'dark', or 'system'")
         return v
 
 class PasswordChange(BaseModel):
@@ -74,6 +81,7 @@ class UserResponse(BaseModel):
     gender: Optional[str]
     avatar_seed: Optional[str]
     save_conversations: bool
+    theme: str = 'system'
     is_active: bool
     created_at: datetime
     roles: List[RoleDetailResponse] = []

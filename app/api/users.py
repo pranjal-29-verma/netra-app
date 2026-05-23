@@ -27,6 +27,8 @@ def update_me(
         current_user.avatar_seed = body.avatar_seed
     if body.save_conversations is not None:
         current_user.save_conversations = body.save_conversations
+    if body.theme is not None:
+        current_user.theme = body.theme
     db.commit()
     db.refresh(current_user)
     return current_user
