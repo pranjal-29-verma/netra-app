@@ -1,7 +1,8 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.database import engine, Base, SessionLocal
 from app.api import auth
 from app.api import conversations
 from app.api import tokens
@@ -14,11 +15,24 @@ import app.models  # ensure all models are registered for table creation
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Load active LLM config into in-memory cache on startup
+    from app.services import llm_config_service
+    db = SessionLocal()
+    try:
+        llm_config_service.reload(db)
+    finally:
+        db.close()
+    yield
+
 # Initialize FastAPI app
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Personal Knowledge Chatbot API"
+    description="Personal Knowledge Chatbot API",
+    lifespan=lifespan,
 )
 
 # Configure CORS

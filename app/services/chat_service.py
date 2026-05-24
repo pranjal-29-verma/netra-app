@@ -83,6 +83,8 @@ class ChatService:
             err_str = str(e)
             if "429" in err_str or "rate" in err_str.lower() or "quota" in err_str.lower():
                 user_msg = "Rate limit exceeded. Please wait a moment and try again."
+            elif "auth" in err_str.lower() or "api key" in err_str.lower() or "invalid" in err_str.lower():
+                user_msg = "Invalid API key. Please contact the admin to fix the model settings."
             else:
                 user_msg = "Failed to generate a response. Please try again."
             yield f"data: {json.dumps({'type': 'error', 'message': user_msg})}\n\n"
@@ -146,6 +148,8 @@ class ChatService:
             err_str = str(e)
             if "429" in err_str or "rate" in err_str.lower() or "quota" in err_str.lower():
                 user_msg = "Rate limit exceeded. Please wait a moment and try again."
+            elif "auth" in err_str.lower() or "api key" in err_str.lower() or "invalid" in err_str.lower():
+                user_msg = "Invalid API key. Please contact the admin to fix the model settings."
             else:
                 user_msg = "Failed to generate a response. Please try again."
             yield f"data: {json.dumps({'type': 'error', 'message': user_msg})}\n\n"

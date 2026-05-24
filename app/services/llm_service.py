@@ -65,13 +65,19 @@ async def stream_response(
     history: list[dict],
     chunks: list[dict],
 ) -> AsyncIterator[str]:
+    from app.services.llm_config_service import get_active_llm
+    custom_model, custom_key = get_active_llm()
+
+    model   = custom_model if custom_model else settings.LLM_MODEL
+    api_key = custom_key   if custom_key   else _resolve_api_key()
+
     messages = _build_messages(user_content, history, chunks)
     response = await litellm.acompletion(
-        model=settings.LLM_MODEL,
+        model=model,
         messages=messages,
         stream=True,
         max_tokens=2048,
-        api_key=_resolve_api_key(),
+        api_key=api_key,
     )
     async for chunk in response:
         delta = chunk.choices[0].delta.content
