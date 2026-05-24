@@ -13,8 +13,10 @@ from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
 from app.models.rbac import Role, Permission
 from app.models.llm_config import LLMConfig, SystemConfig
+from app.models.audit_log import AuditLog
 from app.core.encryption import encrypt, decrypt
 from app.services import llm_config_service
+from app.services import audit_service
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -133,6 +135,13 @@ def toggle_ban(
         raise HTTPException(status_code=400, detail="Cannot ban yourself")
 
     user.is_active = not user.is_active
+    action = "user.ban" if not user.is_active else "user.unban"
+    try:
+        audit_service.write(db, current_user, action,
+            target_type="user", target_id=user.id, target_label=user.username,
+            metadata={"is_active": user.is_active})
+    except Exception:
+        pass
     db.commit()
     db.refresh(user)
     return {"id": user.id, "is_active": user.is_active}
@@ -150,6 +159,7 @@ def delete_user(
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
 
+    deleted_username = user.username
     # Delete in strict dependency order using immediate SQL-level deletes
     conv_ids = db.query(Conversation.id).filter(Conversation.user_id == user_id).subquery()
 
@@ -163,6 +173,11 @@ def delete_user(
     db.query(UserToken).filter(UserToken.user_id == user_id).delete(synchronize_session=False)
     # 5. User (DB cascade removes user_roles)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    try:
+        audit_service.write(db, current_user, "user.delete",
+            target_type="user", target_id=user_id, target_label=deleted_username)
+    except Exception:
+        pass
     db.commit()
 
 
@@ -253,6 +268,12 @@ def create_role(
     db.add(role)
     db.commit()
     db.refresh(role)
+    try:
+        audit_service.write(db, current_user, "role.create",
+            target_type="role", target_id=role.id, target_label=role.name)
+        db.commit()
+    except Exception:
+        pass
     return {
         "id": role.id,
         "name": role.name,
@@ -276,6 +297,12 @@ def assign_roles(
 
     roles = db.query(Role).filter(Role.id.in_(body.role_ids)).all()
     user.roles = roles
+    try:
+        audit_service.write(db, current_user, "role.assign",
+            target_type="user", target_id=user.id, target_label=user.username,
+            metadata={"roles": [r.name for r in roles]})
+    except Exception:
+        pass
     db.commit()
     db.refresh(user)
     return {"id": user.id, "roles": [r.name for r in user.roles]}
@@ -336,8 +363,14 @@ def delete_conversation(
     conv = db.query(Conversation).filter(Conversation.id == conv_id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    conv_title = conv.title
     db.query(Message).filter(Message.conversation_id == conv_id).delete(synchronize_session=False)
     db.delete(conv)
+    try:
+        audit_service.write(db, current_user, "conversation.delete",
+            target_type="conversation", target_id=conv_id, target_label=conv_title)
+    except Exception:
+        pass
     db.commit()
 
 
@@ -394,7 +427,13 @@ def delete_document(
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+    doc_name = doc.filename
     db.delete(doc)
+    try:
+        audit_service.write(db, current_user, "document.delete",
+            target_type="document", target_id=doc_id, target_label=doc_name)
+    except Exception:
+        pass
     db.commit()
 
 
@@ -548,6 +587,11 @@ def toggle_llm_source(
 
     sys_cfg = _get_or_create_sys_config(db)
     sys_cfg.use_custom_llm = body.use_custom_llm
+    try:
+        audit_service.write(db, current_user, "llm.toggle",
+            metadata={"use_custom_llm": body.use_custom_llm})
+    except Exception:
+        pass
     db.commit()
     llm_config_service.set_use_custom(body.use_custom_llm)
     return {"use_custom_llm": sys_cfg.use_custom_llm}
@@ -569,6 +613,13 @@ def create_llm_config(
     db.add(cfg)
     db.commit()
     db.refresh(cfg)
+    try:
+        audit_service.write(db, current_user, "llm.config.create",
+            target_type="llm_config", target_id=cfg.id, target_label=cfg.display_label,
+            metadata={"provider": cfg.provider, "model_name": cfg.model_name})
+        db.commit()
+    except Exception:
+        pass
     return _serialize_config(cfg)
 
 
@@ -586,7 +637,13 @@ def delete_llm_config(
             status_code=400,
             detail="Cannot delete the active config. Activate another config or switch to system default first."
         )
+    cfg_label = cfg.display_label
     db.delete(cfg)
+    try:
+        audit_service.write(db, current_user, "llm.config.delete",
+            target_type="llm_config", target_id=config_id, target_label=cfg_label)
+    except Exception:
+        pass
     db.commit()
 
 
@@ -608,6 +665,13 @@ def activate_llm_config(
 
     # Update in-memory cache
     llm_config_service.set_active_cache(cfg.model_name, decrypt(cfg.api_key_encrypted))
+    try:
+        audit_service.write(db, current_user, "llm.config.activate",
+            target_type="llm_config", target_id=cfg.id, target_label=cfg.display_label,
+            metadata={"provider": cfg.provider, "model_name": cfg.model_name})
+        db.commit()
+    except Exception:
+        pass
     return _serialize_config(cfg)
 
 
@@ -621,10 +685,16 @@ def deactivate_llm_config(
     if not cfg:
         raise HTTPException(status_code=404, detail="Config not found")
 
+    cfg_label = cfg.display_label
     cfg.is_active = False
     # Also force toggle off so system default is used
     sys_cfg = _get_or_create_sys_config(db)
     sys_cfg.use_custom_llm = False
+    try:
+        audit_service.write(db, current_user, "llm.config.deactivate",
+            target_type="llm_config", target_id=config_id, target_label=cfg_label)
+    except Exception:
+        pass
     db.commit()
 
     llm_config_service.clear_active_cache()
@@ -653,3 +723,62 @@ async def test_llm_config(
         raise HTTPException(status_code=400, detail=f"Bad request: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Test failed: {str(e)}")
+
+
+# ── Audit Logs ─────────────────────────────────────────────────────────────────
+
+@router.get("/audit-logs", summary="Paginated, filtered admin audit logs")
+def list_audit_logs(
+    page:        int = Query(1, ge=1),
+    limit:       int = Query(20, ge=1, le=100),
+    action:      str = Query("", description="Filter by action type e.g. user.ban"),
+    actor:       str = Query("", description="Filter by actor username (partial match)"),
+    target_type: str = Query("", description="Filter by target type e.g. user, llm_config"),
+    date_from:   str = Query("", description="Filter from date (YYYY-MM-DD)"),
+    date_to:     str = Query("", description="Filter to date (YYYY-MM-DD)"),
+    current_user: User = Depends(require_permission("audit:view")),
+    db: Session = Depends(get_db),
+):
+    from sqlalchemy import and_
+    q = db.query(AuditLog)
+
+    if action:
+        q = q.filter(AuditLog.action == action)
+    if actor:
+        q = q.filter(AuditLog.actor_name.ilike(f"%{actor}%"))
+    if target_type:
+        q = q.filter(AuditLog.target_type == target_type)
+    if date_from:
+        try:
+            q = q.filter(AuditLog.created_at >= datetime.fromisoformat(date_from))
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            q = q.filter(AuditLog.created_at <= datetime.fromisoformat(date_to + "T23:59:59"))
+        except ValueError:
+            pass
+
+    total = q.count()
+    logs  = q.order_by(AuditLog.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+
+    return {
+        "total": total,
+        "page":  page,
+        "limit": limit,
+        "pages": max(1, -(-total // limit)),
+        "logs": [
+            {
+                "id":           log.id,
+                "actor_id":     log.actor_id,
+                "actor_name":   log.actor_name,
+                "action":       log.action,
+                "target_type":  log.target_type,
+                "target_id":    log.target_id,
+                "target_label": log.target_label,
+                "metadata":     log.meta,
+                "created_at":   log.created_at.isoformat(),
+            }
+            for log in logs
+        ],
+    }
