@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     MISTRAL_API_KEY: str | None = None     # mistral-* models
     LLM_MODEL: str = "gemini/gemini-2.0-flash"
 
+    # Fernet key for encrypting LLM API keys stored in DB
+    # Generate with: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    LLM_ENCRYPTION_KEY: str = "CHANGE_ME_generate_a_real_fernet_key"
+
     # CORS
     FRONTEND_URL: str
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:5174"]

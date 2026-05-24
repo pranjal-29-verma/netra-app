@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, timedelta
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -12,6 +12,9 @@ from app.models.message import Message
 from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
 from app.models.rbac import Role, Permission
+from app.models.llm_config import LLMConfig, SystemConfig
+from app.core.encryption import encrypt, decrypt
+from app.services import llm_config_service
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -445,3 +448,208 @@ def analytics_top_users(
         {"username": r.username, "total_tokens": r.total_tokens_used, "today_tokens": r.tokens_used}
         for r in rows
     ]
+
+
+# ── LLM Model Configuration ────────────────────────────────────────────────────
+
+# Curated list of LiteLLM-supported models grouped by provider
+SUPPORTED_MODELS = [
+    {"provider": "anthropic", "label": "Anthropic", "models": [
+        {"id": "claude-opus-4-7",          "label": "Claude Opus 4.7"},
+        {"id": "claude-sonnet-4-6",        "label": "Claude Sonnet 4.6"},
+        {"id": "claude-haiku-4-5-20251001","label": "Claude Haiku 4.5"},
+    ]},
+    {"provider": "google", "label": "Google", "models": [
+        {"id": "gemini/gemini-2.5-flash",  "label": "Gemini 2.5 Flash"},
+        {"id": "gemini/gemini-2.0-flash",  "label": "Gemini 2.0 Flash"},
+        {"id": "gemini/gemini-1.5-pro",    "label": "Gemini 1.5 Pro"},
+    ]},
+    {"provider": "openai", "label": "OpenAI", "models": [
+        {"id": "gpt-4o",                   "label": "GPT-4o"},
+        {"id": "gpt-4o-mini",              "label": "GPT-4o Mini"},
+        {"id": "gpt-4-turbo",              "label": "GPT-4 Turbo"},
+    ]},
+    {"provider": "mistral", "label": "Mistral", "models": [
+        {"id": "mistral/mistral-large-latest", "label": "Mistral Large"},
+        {"id": "mistral/mistral-small-latest", "label": "Mistral Small"},
+    ]},
+]
+
+
+class LLMConfigCreate(BaseModel):
+    provider: str
+    model_name: str
+    display_label: Optional[str] = None
+    api_key: str
+
+
+class LLMToggleBody(BaseModel):
+    use_custom_llm: bool
+
+
+def _serialize_config(cfg: LLMConfig) -> dict:
+    return {
+        "id":            cfg.id,
+        "provider":      cfg.provider,
+        "model_name":    cfg.model_name,
+        "display_label": cfg.display_label,
+        "is_active":     cfg.is_active,
+        "created_at":    cfg.created_at.isoformat(),
+    }
+
+
+def _get_or_create_sys_config(db: Session) -> SystemConfig:
+    sys_cfg = db.query(SystemConfig).filter(SystemConfig.id == 1).first()
+    if not sys_cfg:
+        sys_cfg = SystemConfig(id=1, use_custom_llm=False)
+        db.add(sys_cfg)
+        db.commit()
+        db.refresh(sys_cfg)
+    return sys_cfg
+
+
+@router.get("/llm/supported-models", summary="Curated list of LiteLLM-supported models")
+def get_supported_models(
+    current_user: User = Depends(require_permission("manage_models")),
+):
+    return SUPPORTED_MODELS
+
+
+@router.get("/llm/settings", summary="Get LLM toggle state and active config")
+def get_llm_settings(
+    current_user: User = Depends(require_permission("manage_models")),
+    db: Session = Depends(get_db),
+):
+    sys_cfg = _get_or_create_sys_config(db)
+    active = db.query(LLMConfig).filter(LLMConfig.is_active == True).first()
+    configs = db.query(LLMConfig).order_by(LLMConfig.created_at.desc()).all()
+    return {
+        "use_custom_llm": sys_cfg.use_custom_llm,
+        "active_config":  _serialize_config(active) if active else None,
+        "configs":        [_serialize_config(c) for c in configs],
+        "system_default": {"model": __import__('app.core.config', fromlist=['settings']).settings.LLM_MODEL},
+    }
+
+
+@router.patch("/llm/toggle", summary="Toggle between system default and custom LLM")
+def toggle_llm_source(
+    body: LLMToggleBody,
+    current_user: User = Depends(require_permission("manage_models")),
+    db: Session = Depends(get_db),
+):
+    # Guard: cannot enable custom if no active config exists
+    if body.use_custom_llm:
+        active = db.query(LLMConfig).filter(LLMConfig.is_active == True).first()
+        if not active:
+            raise HTTPException(
+                status_code=400,
+                detail="No active model configured. Activate a model config first."
+            )
+
+    sys_cfg = _get_or_create_sys_config(db)
+    sys_cfg.use_custom_llm = body.use_custom_llm
+    db.commit()
+    llm_config_service.set_use_custom(body.use_custom_llm)
+    return {"use_custom_llm": sys_cfg.use_custom_llm}
+
+
+@router.post("/llm/configs", status_code=status.HTTP_201_CREATED, summary="Save a new LLM config")
+def create_llm_config(
+    body: LLMConfigCreate,
+    current_user: User = Depends(require_permission("manage_models")),
+    db: Session = Depends(get_db),
+):
+    cfg = LLMConfig(
+        provider=body.provider,
+        model_name=body.model_name,
+        display_label=body.display_label or body.model_name,
+        api_key_encrypted=encrypt(body.api_key),
+        is_active=False,
+    )
+    db.add(cfg)
+    db.commit()
+    db.refresh(cfg)
+    return _serialize_config(cfg)
+
+
+@router.delete("/llm/configs/{config_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete an LLM config")
+def delete_llm_config(
+    config_id: int,
+    current_user: User = Depends(require_permission("manage_models")),
+    db: Session = Depends(get_db),
+):
+    cfg = db.query(LLMConfig).filter(LLMConfig.id == config_id).first()
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Config not found")
+    if cfg.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete the active config. Activate another config or switch to system default first."
+        )
+    db.delete(cfg)
+    db.commit()
+
+
+@router.post("/llm/configs/{config_id}/activate", summary="Activate an LLM config")
+def activate_llm_config(
+    config_id: int,
+    current_user: User = Depends(require_permission("manage_models")),
+    db: Session = Depends(get_db),
+):
+    cfg = db.query(LLMConfig).filter(LLMConfig.id == config_id).first()
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Config not found")
+
+    # Deactivate all others
+    db.query(LLMConfig).filter(LLMConfig.id != config_id).update({"is_active": False})
+    cfg.is_active = True
+    db.commit()
+    db.refresh(cfg)
+
+    # Update in-memory cache
+    llm_config_service.set_active_cache(cfg.model_name, decrypt(cfg.api_key_encrypted))
+    return _serialize_config(cfg)
+
+
+@router.post("/llm/configs/{config_id}/deactivate", summary="Deactivate an LLM config (switches to system default)")
+def deactivate_llm_config(
+    config_id: int,
+    current_user: User = Depends(require_permission("manage_models")),
+    db: Session = Depends(get_db),
+):
+    cfg = db.query(LLMConfig).filter(LLMConfig.id == config_id).first()
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Config not found")
+
+    cfg.is_active = False
+    # Also force toggle off so system default is used
+    sys_cfg = _get_or_create_sys_config(db)
+    sys_cfg.use_custom_llm = False
+    db.commit()
+
+    llm_config_service.clear_active_cache()
+    llm_config_service.set_use_custom(False)
+    return {"message": "Config deactivated. System default LLM is now in use."}
+
+
+@router.post("/llm/configs/test", summary="Test an LLM config without saving")
+async def test_llm_config(
+    body: LLMConfigCreate,
+    current_user: User = Depends(require_permission("manage_models")),
+):
+    import litellm
+    try:
+        response = await litellm.acompletion(
+            model=body.model_name,
+            messages=[{"role": "user", "content": "Hi"}],
+            max_tokens=5,
+            api_key=body.api_key,
+            timeout=10,
+        )
+        return {"success": True, "message": f"Connection successful. Model responded."}
+    except litellm.AuthenticationError:
+        raise HTTPException(status_code=400, detail="Invalid API key for this model.")
+    except litellm.BadRequestError as e:
+        raise HTTPException(status_code=400, detail=f"Bad request: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Test failed: {str(e)}")
