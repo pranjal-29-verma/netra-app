@@ -181,6 +181,43 @@ def delete_user(
     db.commit()
 
 
+class UpdateQuotaBody(BaseModel):
+    daily_quota: int
+
+
+@router.patch("/users/{user_id}/quota", summary="Override a user's daily token quota")
+def update_quota(
+    user_id: int,
+    body: UpdateQuotaBody,
+    current_user: User = Depends(require_permission("users:manage_quota")),
+    db: Session = Depends(get_db),
+):
+    if body.daily_quota < 0:
+        raise HTTPException(status_code=400, detail="daily_quota must be >= 0")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    token = db.query(UserToken).filter(UserToken.user_id == user_id).first()
+    if not token:
+        token = UserToken(user_id=user_id, daily_quota=body.daily_quota)
+        db.add(token)
+    else:
+        old_quota = token.daily_quota
+        token.daily_quota = body.daily_quota
+        try:
+            audit_service.write(db, current_user, "user.quota_change",
+                target_type="user", target_id=user_id, target_label=user.username,
+                metadata={"old": old_quota, "new": body.daily_quota})
+        except Exception:
+            pass
+
+    db.commit()
+    db.refresh(token)
+    return {"user_id": user_id, "daily_quota": token.daily_quota}
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _user_row(user: User, db: Session) -> dict:
@@ -199,6 +236,7 @@ def _user_row(user: User, db: Session) -> dict:
         "conversations": conv_count,
         "tokens_used_today": token.tokens_used if token else 0,
         "total_tokens_used": token.total_tokens_used if token else 0,
+        "daily_quota": token.daily_quota if token else 100000,
     }
 
 
