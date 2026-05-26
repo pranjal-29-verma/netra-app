@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from app.models.conversation import Conversation
@@ -48,11 +49,17 @@ class ConversationService:
         db.commit()
 
     @staticmethod
-    def get_messages(db: Session, conversation_id: int, user_id: int) -> list[Message]:
+    def get_messages(
+        db: Session,
+        conversation_id: int,
+        user_id: int,
+        limit: int = 10,
+        before_id: Optional[int] = None,
+    ) -> list[Message]:
         ConversationService.get_conversation(db, conversation_id, user_id)
-        return (
-            db.query(Message)
-            .filter(Message.conversation_id == conversation_id)
-            .order_by(Message.created_at.asc())
-            .all()
-        )
+        q = db.query(Message).filter(Message.conversation_id == conversation_id)
+        if before_id is not None:
+            q = q.filter(Message.id < before_id)
+        # Fetch the most recent `limit` messages, then reverse to chronological order
+        messages = q.order_by(Message.id.desc()).limit(limit).all()
+        return list(reversed(messages))
