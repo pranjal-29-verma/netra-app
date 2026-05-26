@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -43,10 +44,14 @@ def delete_conversation(
 @router.get("/{conversation_id}/messages", response_model=list[MessageResponse])
 def get_messages(
     conversation_id: int,
+    limit: int = Query(default=10, ge=1, le=100),
+    before_id: Optional[int] = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return ConversationService.get_messages(db, conversation_id, current_user.id)
+    return ConversationService.get_messages(
+        db, conversation_id, current_user.id, limit=limit, before_id=before_id
+    )
 
 
 @router.post("/{conversation_id}/messages/stream")
