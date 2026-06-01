@@ -17,6 +17,9 @@ class User(Base):
     save_conversations = Column(Boolean, default=True)
     theme = Column(String(10), default='system')   # 'light' | 'dark' | 'system'
     is_active = Column(Boolean, default=True)
+    is_verified = Column(Boolean, default=False)
+    verification_token = Column(String(100), nullable=True, unique=True, index=True)
+    verification_token_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
 

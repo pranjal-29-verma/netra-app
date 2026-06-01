@@ -83,6 +83,7 @@ class UserResponse(BaseModel):
     save_conversations: bool
     theme: str = 'system'
     is_active: bool
+    is_verified: bool = False
     created_at: datetime
     roles: List[RoleDetailResponse] = []
 
