@@ -1,8 +1,10 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.rate_limit import limiter, _get_user_key
+from app.core.config import settings
 from app.core.security import get_current_user
 from app.models.user import User
 from app.schemas.conversation import ConversationCreate, ConversationResponse
@@ -55,7 +57,9 @@ def get_messages(
 
 
 @router.post("/{conversation_id}/messages/stream")
+@limiter.limit(lambda: settings.RATE_LIMIT_CHAT, key_func=_get_user_key)
 async def stream_message(
+    request: Request,
     conversation_id: int,
     body: MessageCreate,
     current_user: User = Depends(get_current_user),

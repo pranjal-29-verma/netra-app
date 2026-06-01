@@ -36,3 +36,4 @@ voyageai==0.2.4
 # LLM
 litellm==1.83.7
 anthropic==0.103.1
+slowapi==0.1.9

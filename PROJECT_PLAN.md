@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Project Name:** Netra Chatbot Backend
-**Description:** FastAPI backend for a personal knowledge chatbot — RAG pipeline, LLM streaming, RBAC admin panel, multi-provider LLM config
+**Description:** FastAPI backend for a personal knowledge chatbot — RAG pipeline, LLM streaming, RBAC admin panel, multi-provider LLM config, email verification, rate limiting
 **Tech Stack:**
 - FastAPI + Python 3.14
 - PostgreSQL (Supabase) + pgvector (vector search)
@@ -13,6 +13,8 @@
 - Supabase Storage (document files)
 - JWT + Google OAuth (auth)
 - Fernet (API key encryption)
+- SlowAPI (rate limiting)
+- netra-notify (internal email microservice)
 
 ---
 
@@ -44,32 +46,36 @@ Never commit directly to main. Never push without explicit user approval.
 ```
 netra-app/
 ├── app/
-│   ├── main.py                    # FastAPI app, lifespan hook, routers
+│   ├── main.py                    # FastAPI app, lifespan hook, routers, rate limit setup
 │   ├── core/
 │   │   ├── config.py              # Pydantic settings from .env
 │   │   ├── database.py            # SQLAlchemy engine + SessionLocal
 │   │   ├── security.py            # JWT, bcrypt, require_permission()
 │   │   ├── storage.py             # Supabase Storage client
-│   │   └── encryption.py          # Fernet encrypt/decrypt for LLM keys
+│   │   ├── encryption.py          # Fernet encrypt/decrypt for LLM keys
+│   │   └── rate_limit.py          # SlowAPI limiter + key functions
 │   ├── models/
-│   │   ├── user.py                # User, UserToken
+│   │   ├── user.py                # User (+ email verification), UserToken
 │   │   ├── conversation.py        # Conversation
 │   │   ├── message.py             # Message
 │   │   ├── document.py            # Document
 │   │   ├── document_chunk.py      # DocumentChunk (pgvector)
 │   │   ├── rbac.py                # Role, Permission, junction tables
+│   │   ├── audit_log.py           # AuditLog
 │   │   └── llm_config.py          # LLMConfig, SystemConfig
 │   ├── schemas/
-│   │   ├── user.py                # UserResponse, UserUpdate, PasswordChange
+│   │   ├── user.py                # UserResponse (+ is_verified), UserUpdate, PasswordChange
 │   │   ├── conversation.py
 │   │   ├── message.py
 │   │   ├── document.py
 │   │   └── token.py
 │   ├── services/
-│   │   ├── auth_service.py
+│   │   ├── auth_service.py        # + email verification token logic
 │   │   ├── chat_service.py        # RAG orchestration + SSE streaming
-│   │   ├── llm_service.py         # LiteLLM streaming (cache-aware)
+│   │   ├── llm_service.py         # LiteLLM streaming + asyncio Semaphore
 │   │   ├── llm_config_service.py  # In-memory active LLM cache
+│   │   ├── notify_client.py       # HTTP client → netra-notify (fire-and-forget)
+│   │   ├── audit_service.py       # Audit log writes
 │   │   ├── token_service.py
 │   │   ├── document_service.py
 │   │   ├── vector_service.py      # pgvector store + similarity search
@@ -77,21 +83,24 @@ netra-app/
 │   │   ├── chunking_service.py
 │   │   └── text_extractor.py
 │   └── api/
-│       ├── auth.py
-│       ├── chat.py
-│       ├── conversations.py
+│       ├── auth.py                # + /verify-email, /resend-verification (rate limited)
+│       ├── chat.py                # rate limited
+│       ├── conversations.py       # rate limited stream endpoint
 │       ├── documents.py
 │       ├── tokens.py
 │       ├── users.py
 │       └── admin/
-│           └── router.py          # All admin + LLM config endpoints
+│           └── router.py          # All admin + LLM config + audit log endpoints
 ├── migrations/
 │   ├── add_rbac_tables.py
 │   ├── add_user_profile_columns.py
-│   ├── add_theme_column.py
-│   └── add_llm_config_tables.py
+│   ├── add_llm_config_tables.py
+│   ├── add_audit_logs_table.py
+│   ├── add_quota_permission.py
+│   └── add_email_verification.py
 ├── requirements.txt
 ├── .env
+├── .env.example
 ├── AI_CODE_CLI_RULES.md
 └── PROJECT_PLAN.md
 ```
@@ -104,7 +113,9 @@ netra-app/
 users (
   id, username, email, password_hash, google_id,
   display_name, gender, avatar_seed, save_conversations,
-  theme, is_active, created_at, last_login
+  theme, is_active,
+  is_verified, verification_token, verification_token_expires_at,
+  created_at, last_login
 )
 
 user_tokens (id, user_id, daily_quota, tokens_used, last_reset, total_tokens_used)
@@ -123,6 +134,8 @@ permissions (id, name, description)
 role_permissions (role_id, permission_id)
 user_roles (user_id, role_id)
 
+audit_logs (id, admin_id, action, target_user_id, detail, created_at)
+
 llm_configs (id, provider, model_name, display_label, api_key_encrypted, is_active, created_at)
 system_config (id=1, use_custom_llm)
 ```
@@ -132,11 +145,12 @@ system_config (id=1, use_custom_llm)
 ## API Endpoints (Current)
 
 ### Auth
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/google`
-- `POST /api/auth/refresh`
-- `POST /api/auth/logout`
+- `POST /api/auth/register`            — rate limited: RATE_LIMIT_REGISTER
+- `POST /api/auth/login`               — rate limited: RATE_LIMIT_LOGIN
+- `POST /api/auth/google`              — rate limited: RATE_LIMIT_GOOGLE
+- `POST /api/auth/refresh`             — rate limited: RATE_LIMIT_REFRESH
+- `GET  /api/auth/verify-email`        — email verification link handler
+- `POST /api/auth/resend-verification` — resend verification email
 - `GET  /api/auth/me`
 
 ### Users
@@ -149,8 +163,8 @@ system_config (id=1, use_custom_llm)
 - `POST   /api/conversations`
 - `DELETE /api/conversations/{id}`
 - `GET    /api/conversations/{id}/messages`
-- `POST   /api/conversations/{id}/messages/stream` (SSE)
-- `POST   /api/chat/stream` (stateless incognito SSE)
+- `POST   /api/conversations/{id}/messages/stream` (SSE) — rate limited: RATE_LIMIT_CHAT
+- `POST   /api/chat/stream`                          (SSE) — rate limited: RATE_LIMIT_CHAT
 
 ### Tokens
 - `GET /api/tokens/usage`
@@ -168,6 +182,7 @@ system_config (id=1, use_custom_llm)
 - `GET    /api/admin/users`
 - `GET    /api/admin/users/{id}`
 - `PATCH  /api/admin/users/{id}/ban`
+- `PATCH  /api/admin/users/{id}/quota`
 - `DELETE /api/admin/users/{id}`
 - `PUT    /api/admin/users/{id}/roles`
 - `GET    /api/admin/roles`
@@ -180,6 +195,7 @@ system_config (id=1, use_custom_llm)
 - `GET    /api/admin/analytics/registrations`
 - `GET    /api/admin/analytics/conversations`
 - `GET    /api/admin/analytics/top-users`
+- `GET    /api/admin/audit-logs`
 - `GET    /api/admin/llm/supported-models`
 - `GET    /api/admin/llm/settings`
 - `PATCH  /api/admin/llm/toggle`
@@ -196,8 +212,9 @@ system_config (id=1, use_custom_llm)
 | Permission | Description | Roles |
 |---|---|---|
 | users:read | View user list and profiles | admin, moderator |
-| users:ban | Ban or unban users | admin, moderator |
+| users:ban | Activate/deactivate users | admin, moderator |
 | users:delete | Delete users | admin |
+| users:manage_quota | Override individual user daily token quota | admin |
 | roles:assign | Assign/revoke roles | admin |
 | roles:manage | Create roles and manage permissions | admin |
 | conversations:read_meta | View conversation metadata | admin, moderator |
@@ -216,6 +233,7 @@ system_config (id=1, use_custom_llm)
 |-------|------|--------|
 | Core | Auth (JWT + Google OAuth + refresh tokens) | ✅ Done |
 | Core | Conversations + message persistence | ✅ Done |
+| Core | Cursor-based message pagination (limit + before_id) | ✅ Done |
 | Core | Token quota tracking | ✅ Done |
 | Core | Document upload (Supabase Storage) | ✅ Done |
 | Core | RAG pipeline (pgvector + Voyage AI) | ✅ Done |
@@ -226,17 +244,21 @@ system_config (id=1, use_custom_llm)
 | Phase 5 | Admin endpoints: users, roles, content, analytics | ✅ Done |
 | Phase 5 | Theme persistence (DB column + sync on login) | ✅ Done |
 | Phase 6 | LLM model config: encrypted storage, in-memory cache, admin endpoints | ✅ Done |
+| Phase 6 | Audit logs: admin action tracking with filters + pagination | ✅ Done |
+| Phase 6 | Token quota per user: admin override via PATCH /users/{id}/quota | ✅ Done |
+| Phase 7 | Email verification (P7.1): token generation, verify + resend endpoints | ✅ Done |
+| Phase 7 | Rate limiting (P7.2): SlowAPI on auth + chat, LLM semaphore | ✅ Done |
 
 ---
 
-## Phase 6: Admin Panel Completion ⬅️ Current
+## Phase 6: Admin Panel Completion
 
 | # | Item | Status |
 |---|------|--------|
-| P6.1 | LLM model config — llm_configs table, Fernet encryption, in-memory cache, admin endpoints | ✅ Done |
-| P6.2 | Audit logs — track admin actions (ban, delete, model change, role assign) | 🔲 Todo |
-| P6.3 | Token quota per user — admin overrides individual user daily quota | 🔲 Todo |
-| P6.4 | System announcements — admin broadcasts banner to all users | 🔲 Todo |
+| P6.1 | LLM model config | ✅ Done |
+| P6.2 | Audit logs | ✅ Done |
+| P6.3 | Token quota per user | ✅ Done |
+| P6.4 | System announcements | 🔲 Todo |
 
 ---
 
@@ -244,10 +266,11 @@ system_config (id=1, use_custom_llm)
 
 | # | Item | Status |
 |---|------|--------|
-| P7.1 | Notifications — admin alerts (model key expired, quota breach) | 🔲 Todo |
-| P7.2 | Email verification — confirm email before allowing login | 🔲 Todo |
-| P7.3 | Payment gateway (E4) — Stripe integration, plan tiers, model gating | 🔲 Todo |
-| P7.4 | Rate limiting — per-user request throttling at API level | 🔲 Todo |
+| P7.1 | Email verification (netra-notify + verify/resend endpoints) | ✅ Done |
+| P7.2 | Rate limiting (SlowAPI + LLM concurrency semaphore) | ✅ Done |
+| P7.3 | Password reset flow | 🔲 Todo |
+| P7.4 | In-app notifications | 🔲 Todo |
+| P7.5 | Payment gateway (Stripe integration, plan tiers) | 🔲 Todo |
 
 ---
 
@@ -268,47 +291,20 @@ system_config (id=1, use_custom_llm)
 
 ## Environment Variables
 
-```env
-# Database
-DATABASE_URL=postgresql://...
+See `.env.example` for the full reference with comments.
 
-# JWT
-SECRET_KEY=...
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-REFRESH_TOKEN_EXPIRE_DAYS=7
-
-# Google OAuth
-GOOGLE_CLIENT_ID=...
-
-# Supabase Storage
-SUPABASE_URL=...
-SUPABASE_SERVICE_KEY=...
-SUPABASE_STORAGE_BUCKET=documents
-
-# Voyage AI (embeddings)
-VOYAGE_API_KEY=...
-
-# LLM (.env fallback — overridden by DB config when admin activates custom model)
-LLM_MODEL=gemini/gemini-2.5-flash
-GEMINI_API_KEY=...
-ANTHROPIC_API_KEY=       # set for Claude models
-OPENAI_API_KEY=          # set for GPT models
-MISTRAL_API_KEY=         # set for Mistral models
-
-# Fernet encryption for LLM API keys stored in DB
-LLM_ENCRYPTION_KEY=...   # generate: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-
-# Quotas
-DEFAULT_DAILY_TOKEN_QUOTA=100000
-
-# CORS
-FRONTEND_URL=http://localhost:5174
-
-# App
-ENVIRONMENT=development
-```
+Key groups:
+- **Database** — `DATABASE_URL`
+- **JWT** — `SECRET_KEY`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS`
+- **Google OAuth** — `GOOGLE_CLIENT_ID`
+- **Supabase** — `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_STORAGE_BUCKET`
+- **Voyage AI** — `VOYAGE_API_KEY`
+- **LLM** — `LLM_MODEL`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `MISTRAL_API_KEY`, `LLM_ENCRYPTION_KEY`, `LLM_MAX_CONCURRENT`
+- **Notify** — `NOTIFY_BASE_URL`, `NOTIFY_API_KEY`, `NOTIFY_ENABLED`
+- **Rate limits** — `RATE_LIMIT_LOGIN`, `RATE_LIMIT_REGISTER`, `RATE_LIMIT_GOOGLE`, `RATE_LIMIT_REFRESH`, `RATE_LIMIT_CHAT`
+- **CORS** — `FRONTEND_URL`, `ALLOWED_ORIGINS`
+- **App** — `ENVIRONMENT`
 
 ---
 
-**Last Updated:** Phase 6 in progress — P6.1 (LLM model config) complete. Next: P6.2 Audit Logs.
+**Last Updated:** Phase 7 — P7.1 Email Verification ✅, P7.2 Rate Limiting ✅. Next: P6.4 System Announcements or P7.3 Password Reset.

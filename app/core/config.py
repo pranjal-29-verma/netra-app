@@ -37,6 +37,16 @@ class Settings(BaseSettings):
     # Generate with: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     LLM_ENCRYPTION_KEY: str = "CHANGE_ME_generate_a_real_fernet_key"
 
+    # Max concurrent LLM calls — prevents hammering the provider under load
+    LLM_MAX_CONCURRENT: int = 5
+
+    # API rate limits (slowapi format: "N/second|minute|hour")
+    RATE_LIMIT_LOGIN: str = "5/minute"
+    RATE_LIMIT_REGISTER: str = "3/minute"
+    RATE_LIMIT_GOOGLE: str = "5/minute"
+    RATE_LIMIT_REFRESH: str = "10/minute"
+    RATE_LIMIT_CHAT: str = "20/minute"
+
     # CORS
     FRONTEND_URL: str
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:5174"]

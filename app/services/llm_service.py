@@ -1,6 +1,16 @@
+import asyncio
 import litellm
 from typing import AsyncIterator
 from app.core.config import settings
+
+# Semaphore is created lazily (needs a running event loop)
+_llm_semaphore: asyncio.Semaphore | None = None
+
+def _get_semaphore() -> asyncio.Semaphore:
+    global _llm_semaphore
+    if _llm_semaphore is None:
+        _llm_semaphore = asyncio.Semaphore(settings.LLM_MAX_CONCURRENT)
+    return _llm_semaphore
 
 litellm.drop_params = True  # ignore unsupported params per provider silently
 
@@ -72,14 +82,17 @@ async def stream_response(
     api_key = custom_key   if custom_key   else _resolve_api_key()
 
     messages = _build_messages(user_content, history, chunks)
-    response = await litellm.acompletion(
-        model=model,
-        messages=messages,
-        stream=True,
-        max_tokens=2048,
-        api_key=api_key,
-    )
-    async for chunk in response:
-        delta = chunk.choices[0].delta.content
-        if delta:
-            yield delta
+
+    # Cap concurrent LLM calls — holds slot for the full stream duration
+    async with _get_semaphore():
+        response = await litellm.acompletion(
+            model=model,
+            messages=messages,
+            stream=True,
+            max_tokens=2048,
+            api_key=api_key,
+        )
+        async for chunk in response:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
