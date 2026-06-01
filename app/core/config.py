@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     # Generate with: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     LLM_ENCRYPTION_KEY: str = "CHANGE_ME_generate_a_real_fernet_key"
 
+    # Netra Notify (internal email service)
+    NOTIFY_BASE_URL: str = "http://localhost:8001"
+    NOTIFY_API_KEY: str = "change-me-in-production"
+    NOTIFY_ENABLED: bool = False   # set True when netra-notify is running
+
     # CORS
     FRONTEND_URL: str
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:5174"]
