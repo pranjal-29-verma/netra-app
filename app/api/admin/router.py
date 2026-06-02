@@ -14,6 +14,7 @@ from app.models.document_chunk import DocumentChunk
 from app.models.rbac import Role, Permission
 from app.models.llm_config import LLMConfig, SystemConfig
 from app.models.audit_log import AuditLog
+from app.models.billing import Plan, TokenPack, UserSubscription
 from app.core.encryption import encrypt, decrypt
 from app.services import llm_config_service
 from app.services import audit_service
@@ -820,3 +821,164 @@ def list_audit_logs(
             for log in logs
         ],
     }
+
+
+# ── Billing — Plans ────────────────────────────────────────────────────────────
+
+class PlanBody(BaseModel):
+    name: str
+    description: str = ""
+    price_inr: int
+    tokens_per_day: int
+    duration_days: int
+    max_documents: Optional[int] = None
+    max_conversations: Optional[int] = None
+
+
+@router.get("/billing/plans")
+def admin_list_plans(
+    current_user: User = Depends(require_permission("system:config")),
+    db: Session = Depends(get_db),
+):
+    return db.query(Plan).order_by(Plan.created_at.desc()).all()
+
+
+@router.post("/billing/plans", status_code=status.HTTP_201_CREATED)
+def admin_create_plan(
+    body: PlanBody,
+    current_user: User = Depends(require_permission("system:config")),
+    db: Session = Depends(get_db),
+):
+    plan = Plan(**body.model_dump())
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
+@router.patch("/billing/plans/{plan_id}")
+def admin_update_plan(
+    plan_id: int,
+    body: PlanBody,
+    current_user: User = Depends(require_permission("system:config")),
+    db: Session = Depends(get_db),
+):
+    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    for k, v in body.model_dump().items():
+        setattr(plan, k, v)
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
+@router.patch("/billing/plans/{plan_id}/toggle")
+def admin_toggle_plan(
+    plan_id: int,
+    current_user: User = Depends(require_permission("system:config")),
+    db: Session = Depends(get_db),
+):
+    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    plan.is_active = not plan.is_active
+    db.commit()
+    return {"id": plan.id, "is_active": plan.is_active}
+
+
+# ── Billing — Token Packs ──────────────────────────────────────────────────────
+
+class TokenPackBody(BaseModel):
+    name: str
+    description: str = ""
+    price_inr: int
+    bonus_tokens: int
+
+
+@router.get("/billing/packs")
+def admin_list_packs(
+    current_user: User = Depends(require_permission("system:config")),
+    db: Session = Depends(get_db),
+):
+    return db.query(TokenPack).order_by(TokenPack.created_at.desc()).all()
+
+
+@router.post("/billing/packs", status_code=status.HTTP_201_CREATED)
+def admin_create_pack(
+    body: TokenPackBody,
+    current_user: User = Depends(require_permission("system:config")),
+    db: Session = Depends(get_db),
+):
+    pack = TokenPack(**body.model_dump())
+    db.add(pack)
+    db.commit()
+    db.refresh(pack)
+    return pack
+
+
+@router.patch("/billing/packs/{pack_id}")
+def admin_update_pack(
+    pack_id: int,
+    body: TokenPackBody,
+    current_user: User = Depends(require_permission("system:config")),
+    db: Session = Depends(get_db),
+):
+    pack = db.query(TokenPack).filter(TokenPack.id == pack_id).first()
+    if not pack:
+        raise HTTPException(status_code=404, detail="Token pack not found")
+    for k, v in body.model_dump().items():
+        setattr(pack, k, v)
+    db.commit()
+    db.refresh(pack)
+    return pack
+
+
+@router.patch("/billing/packs/{pack_id}/toggle")
+def admin_toggle_pack(
+    pack_id: int,
+    current_user: User = Depends(require_permission("system:config")),
+    db: Session = Depends(get_db),
+):
+    pack = db.query(TokenPack).filter(TokenPack.id == pack_id).first()
+    if not pack:
+        raise HTTPException(status_code=404, detail="Token pack not found")
+    pack.is_active = not pack.is_active
+    db.commit()
+    return {"id": pack.id, "is_active": pack.is_active}
+
+
+# ── Billing — Subscriptions ────────────────────────────────────────────────────
+
+@router.get("/billing/subscriptions")
+def admin_list_subscriptions(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    status_filter: str = Query("", alias="status"),
+    current_user: User = Depends(require_permission("system:config")),
+    db: Session = Depends(get_db),
+):
+    q = db.query(UserSubscription)
+    if status_filter:
+        q = q.filter(UserSubscription.status == status_filter)
+    total = q.count()
+    subs = q.order_by(UserSubscription.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+
+    rows = []
+    for s in subs:
+        user = db.query(User).filter(User.id == s.user_id).first()
+        rows.append({
+            "id": s.id,
+            "user_id": s.user_id,
+            "username": user.username if user else "—",
+            "email": user.email if user else "—",
+            "item_type": s.item_type,
+            "item_name": s.item_name,
+            "amount_paid": s.amount_paid,
+            "status": s.status,
+            "razorpay_order_id": s.razorpay_order_id,
+            "created_at": s.created_at.isoformat(),
+            "expires_at": s.expires_at.isoformat() if s.expires_at else None,
+        })
+
+    return {"total": total, "page": page, "limit": limit, "subscriptions": rows}

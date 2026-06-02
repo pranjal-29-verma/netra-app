@@ -37,3 +37,4 @@ voyageai==0.2.4
 litellm==1.83.7
 anthropic==0.103.1
 slowapi==0.1.9
+razorpay

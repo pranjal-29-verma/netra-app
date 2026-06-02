@@ -12,6 +12,7 @@ from app.api import tokens
 from app.api import documents
 from app.api import chat
 from app.api import users
+from app.api import billing
 from app.api.admin import router as admin_router
 import app.models  # ensure all models are registered for table creation
 
@@ -66,6 +67,7 @@ app.include_router(tokens.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
+app.include_router(billing.router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
 
 @app.get("/")
