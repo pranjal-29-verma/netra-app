@@ -48,7 +48,7 @@ def login(request: Request, user_data: UserLogin, db: Session = Depends(get_db))
 
 @router.post("/google", response_model=TokenResponse)
 @limiter.limit(lambda: settings.RATE_LIMIT_GOOGLE)
-def google_login(request: Request, body: GoogleLoginRequest, db: Session = Depends(get
+def google_login(request: Request, body: GoogleLoginRequest, db: Session = Depends(get_db)):
     user = AuthService.google_login_user(db, body.credential)
     access_token = create_access_token(data={"sub": str(user.id)})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
@@ -64,11 +64,11 @@ def google_login(request: Request, body: GoogleLoginRequest, db: Session = Depen
 def refresh(request: Request, body: RefreshRequest, db: Session = Depends(get_db)):
     payload = verify_token(body.refresh_token)
     if not payload or payload.get("type") != "refresh":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
     user = db.query(User).filter(User.id == int(payload["sub"])).first()
     if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
     access_token = create_access_token(data={"sub": str(user.id)})
     new_refresh_token = create_refresh_token(data={"sub": str(user.id)})

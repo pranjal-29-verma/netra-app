@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     RATE_LIMIT_REFRESH: str = "10/minute"
     RATE_LIMIT_CHAT: str = "20/minute"
 
+    # Razorpay
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    WELCOME_BONUS_TOKENS: int = 500
+    FREE_TIER_DAILY_QUOTA: int = 500
+
     # Netra Notify (internal email service)
     NOTIFY_BASE_URL: str = "http://localhost:8001"
     NOTIFY_API_KEY: str = "change-me-in-production"

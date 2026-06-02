@@ -30,7 +30,11 @@ class UserToken(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, index=True, nullable=False)
-    daily_quota = Column(Integer, default=100000)  # 100k tokens per day
+    daily_quota = Column(Integer, default=500)
     tokens_used = Column(Integer, default=0)
     last_reset = Column(DateTime(timezone=True), server_default=func.now())
     total_tokens_used = Column(BigInteger, default=0)
+    bonus_tokens = Column(Integer, default=0)
+    welcome_bonus_claimed = Column(Boolean, default=False)
+    active_plan_id = Column(Integer, nullable=True)
+    plan_expires_at = Column(DateTime(timezone=True), nullable=True)
