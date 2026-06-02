@@ -5,16 +5,16 @@ from typing import List
 class Settings(BaseSettings):
     # Database
     DATABASE_URL: str
-    
+
     # JWT
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60   # override in .env (e.g. 480 for 8h)
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7      # override in .env
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # Token quota — default for new users; Admin UI override coming in Phase 5
+    # Token quota
     DEFAULT_DAILY_TOKEN_QUOTA: int = 100000
-    
+
     # Google OAuth
     GOOGLE_CLIENT_ID: str
 
@@ -26,31 +26,41 @@ class Settings(BaseSettings):
     # Voyage AI (embeddings)
     VOYAGE_API_KEY: str
 
-    # LLM — set whichever key matches your chosen provider; LiteLLM reads them automatically
-    ANTHROPIC_API_KEY: str | None = None   # claude-*  models
-    GEMINI_API_KEY: str | None = None      # gemini/*  models
-    OPENAI_API_KEY: str | None = None      # gpt-*     models
-    MISTRAL_API_KEY: str | None = None     # mistral-* models
+    # LLM
+    ANTHROPIC_API_KEY: str | None = None
+    GEMINI_API_KEY: str | None = None
+    OPENAI_API_KEY: str | None = None
+    MISTRAL_API_KEY: str | None = None
     LLM_MODEL: str = "gemini/gemini-2.0-flash"
 
     # Fernet key for encrypting LLM API keys stored in DB
     # Generate with: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     LLM_ENCRYPTION_KEY: str = "CHANGE_ME_generate_a_real_fernet_key"
 
+    # Max concurrent LLM calls — prevents hammering the provider under load
+    LLM_MAX_CONCURRENT: int = 5
+
+    # API rate limits (slowapi format: "N/second|minute|hour")
+    RATE_LIMIT_LOGIN: str = "5/minute"
+    RATE_LIMIT_REGISTER: str = "3/minute"
+    RATE_LIMIT_GOOGLE: str = "5/minute"
+    RATE_LIMIT_REFRESH: str = "10/minute"
+    RATE_LIMIT_CHAT: str = "20/minute"
+
     # Netra Notify (internal email service)
     NOTIFY_BASE_URL: str = "http://localhost:8001"
     NOTIFY_API_KEY: str = "change-me-in-production"
-    NOTIFY_ENABLED: bool = False   # set True when netra-notify is running
+    NOTIFY_ENABLED: bool = False
 
     # CORS
     FRONTEND_URL: str
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:5174"]
-    
+
     # App
     PROJECT_NAME: str = "Netra Chatbot"
     VERSION: str = "1.0.0"
     ENVIRONMENT: str = "development"
-    
+
     model_config = ConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
 settings = Settings()
