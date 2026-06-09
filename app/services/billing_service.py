@@ -166,6 +166,24 @@ def verify_payment(
     return sub
 
 
+def get_user_limits(db: Session, user_id: int) -> dict:
+    """
+    Return the effective plan limits for a user.
+    - Active paid plan: use plan's limits (None = unlimited)
+    - No plan / free tier: use FREE_TIER_* config defaults
+    """
+    active_plan = get_active_plan(db, user_id)
+    if active_plan:
+        return {
+            "max_conversations": active_plan.max_conversations,  # None = unlimited
+            "max_documents": active_plan.max_documents,          # None = unlimited
+        }
+    return {
+        "max_conversations": settings.FREE_TIER_MAX_CONVERSATIONS,
+        "max_documents": settings.FREE_TIER_MAX_DOCUMENTS,
+    }
+
+
 def get_billing_summary(db: Session, user_id: int) -> dict:
     """Return current plan, token balances and purchase history."""
     token_record = _get_or_create_token_record(db, user_id)

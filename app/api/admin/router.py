@@ -851,6 +851,9 @@ def admin_create_plan(
 ):
     plan = Plan(**body.model_dump())
     db.add(plan)
+    db.flush()
+    audit_service.write(db, current_user, "billing.plan_create",
+                        target_type="plan", target_id=plan.id, target_label=plan.name)
     db.commit()
     db.refresh(plan)
     return plan
@@ -868,6 +871,8 @@ def admin_update_plan(
         raise HTTPException(status_code=404, detail="Plan not found")
     for k, v in body.model_dump().items():
         setattr(plan, k, v)
+    audit_service.write(db, current_user, "billing.plan_update",
+                        target_type="plan", target_id=plan.id, target_label=plan.name)
     db.commit()
     db.refresh(plan)
     return plan
@@ -883,6 +888,9 @@ def admin_toggle_plan(
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
     plan.is_active = not plan.is_active
+    action = "billing.plan_activate" if plan.is_active else "billing.plan_deactivate"
+    audit_service.write(db, current_user, action,
+                        target_type="plan", target_id=plan.id, target_label=plan.name)
     db.commit()
     return {"id": plan.id, "is_active": plan.is_active}
 
@@ -912,6 +920,9 @@ def admin_create_pack(
 ):
     pack = TokenPack(**body.model_dump())
     db.add(pack)
+    db.flush()
+    audit_service.write(db, current_user, "billing.pack_create",
+                        target_type="token_pack", target_id=pack.id, target_label=pack.name)
     db.commit()
     db.refresh(pack)
     return pack
@@ -929,6 +940,8 @@ def admin_update_pack(
         raise HTTPException(status_code=404, detail="Token pack not found")
     for k, v in body.model_dump().items():
         setattr(pack, k, v)
+    audit_service.write(db, current_user, "billing.pack_update",
+                        target_type="token_pack", target_id=pack.id, target_label=pack.name)
     db.commit()
     db.refresh(pack)
     return pack
@@ -944,6 +957,9 @@ def admin_toggle_pack(
     if not pack:
         raise HTTPException(status_code=404, detail="Token pack not found")
     pack.is_active = not pack.is_active
+    action = "billing.pack_activate" if pack.is_active else "billing.pack_deactivate"
+    audit_service.write(db, current_user, action,
+                        target_type="token_pack", target_id=pack.id, target_label=pack.name)
     db.commit()
     return {"id": pack.id, "is_active": pack.is_active}
 

@@ -1,5 +1,5 @@
-from typing import Optional
-from fastapi import APIRouter, Depends, Query, Request, status
+from typing import Optional, Literal
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
@@ -9,8 +9,10 @@ from app.core.security import get_current_user
 from app.models.user import User
 from app.schemas.conversation import ConversationCreate, ConversationResponse
 from app.schemas.message import MessageResponse, MessageCreate
+from app.models.conversation import Conversation
 from app.services.conversation_service import ConversationService
 from app.services.chat_service import ChatService
+from app.services.billing_service import get_user_limits
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
 
@@ -31,6 +33,15 @@ def create_conversation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    limits = get_user_limits(db, current_user.id)
+    max_conv = limits["max_conversations"]
+    if max_conv is not None:
+        count = db.query(Conversation).filter(Conversation.user_id == current_user.id).count()
+        if count >= max_conv:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Conversation limit reached ({max_conv}). Upgrade your plan to create more.",
+            )
     return ConversationService.create_conversation(db, current_user.id, data)
 
 
