@@ -1,11 +1,25 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, status
 from typing import Optional, Literal
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
+from app.models.document import Document
 from app.schemas.document import DocumentResponse, DocumentURLCreate
 from app.services.document_service import DocumentService
+from app.services.billing_service import get_user_limits
+
+
+def _check_document_limit(db: Session, user_id: int) -> None:
+    limits = get_user_limits(db, user_id)
+    max_docs = limits["max_documents"]
+    if max_docs is not None:
+        count = db.query(Document).filter(Document.user_id == user_id).count()
+        if count >= max_docs:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Document limit reached ({max_docs}). Upgrade your plan to upload more.",
+            )
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -27,6 +41,7 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _check_document_limit(db, current_user.id)
     return await DocumentService.upload_file(db, current_user.id, file, scope, conversation_id)
 
 
@@ -36,6 +51,7 @@ def add_url(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _check_document_limit(db, current_user.id)
     return DocumentService.add_url(db, current_user.id, body.url, body.filename, body.scope, body.conversation_id)
 
 

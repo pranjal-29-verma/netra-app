@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_SECRET: str = ""
     WELCOME_BONUS_TOKENS: int = 500
     FREE_TIER_DAILY_QUOTA: int = 500
+    FREE_TIER_MAX_CONVERSATIONS: int = 5    # None-equivalent = 0 means unlimited; set high to disable
+    FREE_TIER_MAX_DOCUMENTS: int = 2
 
     # Netra Notify (internal email service)
     NOTIFY_BASE_URL: str = "http://localhost:8001"
