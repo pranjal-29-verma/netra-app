@@ -10,11 +10,13 @@ from app.services.document_service import DocumentService
 from app.services.billing_service import get_user_limits
 
 
-def _check_document_limit(db: Session, user_id: int) -> None:
-    limits = get_user_limits(db, user_id)
+def _check_document_limit(db: Session, current_user: User) -> None:
+    if any(r.name == "admin" for r in current_user.roles):
+        return
+    limits = get_user_limits(db, current_user.id)
     max_docs = limits["max_documents"]
     if max_docs is not None:
-        count = db.query(Document).filter(Document.user_id == user_id).count()
+        count = db.query(Document).filter(Document.user_id == current_user.id).count()
         if count >= max_docs:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -41,7 +43,7 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _check_document_limit(db, current_user.id)
+    _check_document_limit(db, current_user)
     return await DocumentService.upload_file(db, current_user.id, file, scope, conversation_id)
 
 
@@ -51,7 +53,7 @@ def add_url(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _check_document_limit(db, current_user.id)
+    _check_document_limit(db, current_user)
     return DocumentService.add_url(db, current_user.id, body.url, body.filename, body.scope, body.conversation_id)
 
 

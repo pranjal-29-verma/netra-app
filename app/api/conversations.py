@@ -33,15 +33,17 @@ def create_conversation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    limits = get_user_limits(db, current_user.id)
-    max_conv = limits["max_conversations"]
-    if max_conv is not None:
-        count = db.query(Conversation).filter(Conversation.user_id == current_user.id).count()
-        if count >= max_conv:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Conversation limit reached ({max_conv}). Upgrade your plan to create more.",
-            )
+    is_admin = any(r.name == "admin" for r in current_user.roles)
+    if not is_admin:
+        limits = get_user_limits(db, current_user.id)
+        max_conv = limits["max_conversations"]
+        if max_conv is not None:
+            count = db.query(Conversation).filter(Conversation.user_id == current_user.id).count()
+            if count >= max_conv:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Conversation limit reached ({max_conv}). Upgrade your plan to create more.",
+                )
     return ConversationService.create_conversation(db, current_user.id, data)
 
 
