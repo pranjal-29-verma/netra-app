@@ -98,7 +98,8 @@ class ChatService:
             output_tokens = _litellm.token_counter(model=_settings.LLM_MODEL, text=full_response)
             total_tokens = input_tokens + output_tokens
         except Exception:
-            total_tokens = 0
+            # Fallback: ~4 chars per token when litellm counter unsupported for model
+            total_tokens = max(1, (len(content) + len(full_response)) // 4)
 
         # Save assistant message
         assistant_message = Message(
@@ -141,8 +142,10 @@ class ChatService:
             for c in chunks
         ]
 
+        full_response = ""
         try:
             async for delta in stream_response(content, history, chunks):
+                full_response += delta
                 yield f"data: {json.dumps({'type': 'delta', 'content': delta})}\n\n"
         except Exception as e:
             err_str = str(e)
@@ -154,5 +157,18 @@ class ChatService:
                 user_msg = "Failed to generate a response. Please try again."
             yield f"data: {json.dumps({'type': 'error', 'message': user_msg})}\n\n"
             return
+
+        import litellm as _litellm
+        from app.core.config import settings as _settings
+        try:
+            input_tokens = _litellm.token_counter(model=_settings.LLM_MODEL, text=content)
+            output_tokens = _litellm.token_counter(model=_settings.LLM_MODEL, text=full_response)
+            total_tokens = input_tokens + output_tokens
+        except Exception:
+            # Fallback: ~4 chars per token when litellm counter unsupported for model
+            total_tokens = max(1, (len(content) + len(full_response)) // 4)
+
+        if total_tokens:
+            TokenService.add_tokens(db, user_id, total_tokens)
 
         yield f"data: {json.dumps({'type': 'done', 'sources': sources})}\n\n"
