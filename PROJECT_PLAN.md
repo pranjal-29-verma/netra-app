@@ -248,6 +248,9 @@ system_config (id=1, use_custom_llm)
 | Phase 6 | Token quota per user: admin override via PATCH /users/{id}/quota | ✅ Done |
 | Phase 7 | Email verification (P7.1): token generation, verify + resend endpoints | ✅ Done |
 | Phase 7 | Rate limiting (P7.2): SlowAPI on auth + chat, LLM semaphore | ✅ Done |
+| Phase 7 | Payment gateway (P7.5): Razorpay plans + token packs, HMAC webhook | ✅ Done |
+| DevOps | Docker deployment: Dockerfile, docker-compose, nginx reverse proxy | ✅ Done |
+| Bugfix | Admin bypass: skip plan limits for admin on conversations + documents | ✅ Done |
 
 ---
 
@@ -258,7 +261,7 @@ system_config (id=1, use_custom_llm)
 | P6.1 | LLM model config | ✅ Done |
 | P6.2 | Audit logs | ✅ Done |
 | P6.3 | Token quota per user | ✅ Done |
-| P6.4 | System announcements | 🔲 Todo |
+| P6.4 | System announcements | 🔲 Deferred (post-launch) |
 
 ---
 
@@ -268,13 +271,29 @@ system_config (id=1, use_custom_llm)
 |---|------|--------|
 | P7.1 | Email verification (netra-notify + verify/resend endpoints) | ✅ Done |
 | P7.2 | Rate limiting (SlowAPI + LLM concurrency semaphore) | ✅ Done |
-| P7.3 | Password reset flow | 🔲 Todo |
-| P7.4 | In-app notifications | 🔲 Todo |
-| P7.5 | Payment gateway (Stripe integration, plan tiers) | 🔲 Todo |
+| P7.3 | Password reset flow | 🔲 Deferred (post-launch) |
+| P7.4 | In-app notifications | 🔲 Deferred (post-launch) |
+| P7.5 | Payment gateway (Razorpay — plans + token packs) | ✅ Done |
 
 ---
 
-## Phase 8: User Experience Polish
+## 🚀 Pre-Launch: Bug Fixes & Testing (Current Focus)
+
+**Goal:** Stabilise existing features before adding anything new.
+
+| # | Item | Priority | Status |
+|---|------|----------|--------|
+| BT1 | End-to-end flow test: register → verify email → chat → upload doc | High | 🔲 Todo |
+| BT2 | Admin panel smoke test: all CRUD, role assign, LLM config, audit logs | High | 🔲 Todo |
+| BT3 | Payment flow test: plan purchase → quota update → token pack purchase | High | 🔲 Todo |
+| BT4 | Docker end-to-end: compose up → all three services healthy → chat works | High | 🔲 Todo |
+| BT5 | Rate limit validation: hit limits, confirm correct 429 responses | Medium | 🔲 Todo |
+| BT6 | Error handling: invalid API key, quota exhausted, bad document | Medium | 🔲 Todo |
+| BT7 | Edge cases: incognito mode, deleted conversation, banned user | Medium | 🔲 Todo |
+
+---
+
+## Phase 8: User Experience Polish (Post-Launch)
 
 | # | Item | Status |
 |---|------|--------|
@@ -307,4 +326,4 @@ Key groups:
 
 ---
 
-**Last Updated:** Phase 7 — P7.1 Email Verification ✅, P7.2 Rate Limiting ✅. Next: P6.4 System Announcements or P7.3 Password Reset.
+**Last Updated:** Pre-launch bug fixing & testing phase. All core features complete. Focus: stabilise before adding new features.
